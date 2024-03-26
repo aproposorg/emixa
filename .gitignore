@@ -1,0 +1,16 @@
+# Ignore all project-unrelated files
+.bloop/*
+.bsp/*
+.metals/*
+.vscode/*
+build/*
+project/*
+target/*
+test_run_dir/*
+
+# Ignore compiled and produced files
+output/*
+emixa/__pycache__/*
+
+# Include build properties file
+!project/build.properties
