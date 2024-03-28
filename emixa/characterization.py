@@ -5,7 +5,7 @@ import struct
 import subprocess
 from itertools import product
 from typing import Tuple
-from .util import relabel, _info, _error
+from .util import relabel, _info, _warning, _error
 
 class Characterization(ABC):
 
@@ -83,7 +83,7 @@ def read_data_exhaustive(srcpath: str) -> Tuple[np.ndarray, int]:
             return None
 
     # Reshape the data array    
-    data = [data[i:i+(1 << awidth)] for i in range(0, len(data), 1 << awidth)]
+    data = np.array([data[i:i+(1 << awidth)] for i in range(0, len(data), 1 << awidth)])
 
     return data, awidth
 
@@ -193,6 +193,173 @@ def parse_range(arg: str) -> range:
 
 
 
+def val_sbt_exists(name: str, sbt_res: str) -> bool:
+    """
+    Validate that a characterizer exists from the output of an SBT test
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - sbt_res the output from the SBT test
+
+    Returns bool depending on the outcome of the SBT test
+    """
+    if 'No tests to run' in sbt_res:
+        print(f'{_error} The specified test {name} does not exist')
+        return False
+    return True
+
+
+
+def val_sbt_compiles(name: str, sbt_res: str) -> bool:
+    """
+    Validate that a characterizer compiles from the output of an SBT test
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - sbt_res the output from the SBT test
+
+    Returns bool depending on the outcome of the SBT test
+    """
+    if '[error]' in sbt_res:
+        lines  = list(filter(lambda l: '[error]' in l, sbt_res.split('\n')))
+        index  = max([(i if '^' in l else 1) for i, l in enumerate(lines)])
+        errors = relabel('\n'.join(lines[:index+1]))
+        print(f'{_error} The specified test {name} does not compile:\n{errors}')
+        return False
+    return True
+
+
+
+def val_sbt_executed(name: str, sbt_res: str) -> bool:
+    """
+    Validate that a characterizer executed from the output of an SBT test
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - sbt_res the output from the SBT test
+
+    Returns bool depending on the outcome of the SBT test
+    """
+    if 'No tests were executed' in sbt_res:
+        lines  = sbt_res.split('\n')
+        index  = sum([(i if name in l else 0) for i, l in enumerate(lines)])
+        errors = relabel('\n'.join(lines[index:index+4]))
+        print(f'{_error} The specified test {name} could not be executed:\n{errors}')
+        return False
+    return True
+
+
+
+def val_char_ok(name: str, sbt_res: str) -> bool:
+    """
+    Validate that a characterizer ran properly from the output of an SBT test
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - sbt_res the output from the SBT test
+
+    Returns bool depending on the outcome of the SBT test
+    """
+    if _error in sbt_res:
+        lines  = list(filter(lambda l: _info in l or _error in l, sbt_res.split('\n')))
+        index  = min([(i if _error in l else 0) for i, l in enumerate(lines)])
+        errors = relabel('\n'.join(list(filter(lambda l: 'emixa' in l, lines[index:]))))
+        print(f'{_error} Characterizer {name} reports errors:\n{errors}')
+        return False
+    return True
+
+
+
+def val_sbt_output(name: str, sbt_res: str) -> bool:
+    """
+    Validate that a characterization ran successfully from the output of an SBT test
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - sbt_res the output from the SBT test
+
+    Returns bool depending on the outcome of the SBT test
+    """
+    exists   = val_sbt_exists(name, sbt_res)
+    compiles = val_sbt_compiles(name, sbt_res)
+    executed = val_sbt_executed(name, sbt_res)
+    char_ok  = val_char_ok(name, sbt_res)
+    return exists and compiles and executed and char_ok
+
+
+
+def position_args(name: str, args: list) -> Tuple[list, list]:
+    """
+    Position named and positional arguments properly according to a characterizer's inputs
+
+    This function takes arguments as follows:
+    - name the name of the characterizer
+    - args a list of arguments to pass to the characterizer
+
+    Returns a list(parameters) | None if positioning was not possible
+    """
+    test_cmd = f'testOnly {name}'
+
+    # Run the SBT command to capture the help message
+    sbt_res = subprocess.run([f'sbt', test_cmd, 'exit'], capture_output=True, text=True).stdout
+
+    # Analyze the output to determine the argument names, if any
+    if not val_sbt_exists(name, sbt_res) or not val_sbt_executed(name, sbt_res):
+        return None
+    lines = list(filter(lambda l: _info in l, sbt_res.split('\n')))[1:]
+    paramnames = list(map(lambda l: l.split(' ')[2], lines))
+    if len(args) < len(paramnames):
+        print(f'{_error} Missing arguments for characterizer {name}: Expected {len(paramnames)}, got {len(args)}')
+        return None
+
+    # Extract the named arguments passed and validate them
+    namedargs = [arg.split('=') for arg in args if '=' in arg]
+    malformed_args = [narg for narg in namedargs if len(narg) != 2]
+    if len(malformed_args) != 0:
+        plural = 's' if len(malformed_args) > 1 else ''
+        errors = '\n'.join([f'{_error} - {arg}' for arg in malformed_args])
+        expected = '\n'.join([f'{_error} {" ".join(l.split(" ")[1:])}' for l in lines])
+        print(f'{_error} Got malformed named argument{plural} for characterizer {name}:\n{errors}')
+        print(f'{_error} Expected arguments:\n{expected}')
+        return None
+    mismatched_args = [narg[0] for narg in namedargs if narg[0] not in paramnames]
+    if len(mismatched_args) != 0:
+        plural = 's' if len(mismatched_args) > 1 else ''
+        errors = '\n'.join([f'{_error} - {arg}' for arg in mismatched_args])
+        expected = '\n'.join([f'{_error} {" ".join(l.split(" ")[1:])}' for l in lines])
+        print(f'{_error} Got mismatched named argument{plural} for characterizer {name}:\n{errors}')
+        print(f'{_error} Expected arguments:\n{expected}')
+        return None
+    unique_args, counts = np.unique([narg[0] for narg in namedargs], return_counts=True)
+    if np.count_nonzero(counts > 1) != 0:
+        non_unique_args = unique_args[counts > 1]
+        plural = 's' if len(non_unique_args) > 1 else ''
+        errors = '\n'.join([f'{_error} - {arg}' for arg in non_unique_args])
+        expected = '\n'.join([f'{_error} {" ".join(l.split(" ")[1:])}' for l in lines])
+        print(f'{_error} Got non-unique named argument{plural} for characterizer {name}:\n{errors}')
+        print(f'{_error} Expected arguments:\n{expected}')
+        return None
+    namedargs = {narg[0] : narg[1] for narg in namedargs}
+
+    # Extract the positional arguments passed and inform about additional ones
+    posargs = [arg for arg in args if '=' not in arg]
+    num_add_args = len(namedargs) + len(posargs) - len(paramnames)
+    if num_add_args != 0:
+        warns = '\n'.join([f'{_warning} - {arg}' for arg in posargs[len(posargs)-num_add_args:]])
+        print(f'{_warning} Got {num_add_args} additional arguments for characterizer {name}:\n{warns}')
+    params = []
+    offset = 0
+    for prmname in paramnames:
+        if prmname in namedargs:
+            params.append(namedargs[prmname])
+        else:
+            params.append(posargs[offset])
+            offset += 1
+
+    return params, paramnames
+
+
+
 def characterize(args: list, kvargmap: dict) -> list:
     """
     Execute the characterization `name` with the given arguments `args` and 
@@ -203,15 +370,27 @@ def characterize(args: list, kvargmap: dict) -> list:
     - kvargmap a dictionary of command line arguments passed to emixa
 
     Returns list(Characterization) | None if no characterization was performed
-
-    TODO implement support for named arguments
     """
     name = args.pop(0)
     path = f'./output/{name}'
     test_cmd = f'testOnly {name}'
 
+    # If any named arguments are passed, extract the names of the arguments 
+    # required by the test and position the passed arguments accordingly,
+    # if the test exists
+    has_named = len(list(filter(lambda arg: '=' in arg, args))) != 0
+    if has_named:
+        print(f'{_info} Found named arguments, positioning parameters from the left')
+        pos_args = position_args(test_cmd, args)
+        if pos_args is None:
+            return None
+        params, paramnames = pos_args
+    else:
+        params = args
+        paramnames = [f'arg{i}' for i in range(len(params))]
+
     # Split the arguments and search for any range-type arguments
-    params = list(map(lambda arg: parse_range(arg) if ':' in arg else arg, args))
+    params = list(map(lambda prm: parse_range(prm) if ':' in prm else prm, params))
 
     # Combine the range arguments into all possible parameter combinations
     rangeparams = list(filter(lambda arg: isinstance(arg[1], range), enumerate(params)))
@@ -224,7 +403,7 @@ def characterize(args: list, kvargmap: dict) -> list:
     for comb in rangecombs:
         # Generate the proper combination of parameters for this run
         runparams = [comb[rangeinds[i]] if i in rangeinds else params[i] for i in range(len(params))]
-        cmdparams = ' '.join([f'-Darg{i}={param}' for i, param in enumerate(runparams)])
+        cmdparams = ' '.join([f'-D{paramnames[i]}={param}' for i, param in enumerate(runparams)])
 
         # Give a status on this run with colored highlights on range parameters
         if first:
@@ -239,27 +418,10 @@ def characterize(args: list, kvargmap: dict) -> list:
 
         # Analyze the output to determine the type of test, if any
         print(f'{_info} Analyzing output from characterizer {name}')
-        if 'No tests to run' in sbt_res:
-            print(f'{_error} The specified test {name} does not exist')
+        if not val_sbt_output(name, sbt_res):
             return None
-        if 'No tests were executed' in sbt_res:
-            lines  = sbt_res.split('\n')
-            index  = sum([(i if name in l else 0) for i, l in enumerate(lines)])
-            errors = relabel('\n'.join(lines[index:index+4]))
-            print(f'{_error} The specified test {name} could not be executed:\n{errors}')
-            return None
-        if 'emixa-error' in sbt_res:
-            lines  = list(filter(lambda l: 'emixa-' in l, sbt_res.split('\n')))
-            index  = min([(i if 'emixa-error' in l else 0) for i, l in enumerate(lines)])
-            errors = relabel('\n'.join(list(filter(lambda l: 'emixa' in l, lines[index:]))))
-            print(f'{_error} Characterizer reports errors:\n{errors}')
-            return None
-        if '[error]' in sbt_res:
-            lines  = list(filter(lambda l: '[error]' in l, sbt_res.split('\n')))
-            index  = max([(i if '^' in l else 0) for i, l in enumerate(lines)])
-            errors = relabel('\n'.join(lines[:index+1]))
-            print(f'{_error} The specified test {name} does not compile:\n{errors}')
-            return None
+
+        # Extract the test specifications
         sbt_res = list(filter(lambda l: _info in l, sbt_res.split('\n')))
         specs = sbt_res[0].split(' ')
         (chartype, sgn, module) = (specs[1].lower(), specs[2].lower() == 'signed', specs[3].lower())

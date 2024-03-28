@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 
 import sys
 
@@ -15,7 +16,7 @@ from emixa.util import _info, _warning, _error
 
 def emixa(args) -> None:
     """
-    Run the Error Modeling of Inexact Arithmetic (EMIXA) tool on a given test
+    Error Modeling of Inexact Arithmetic (EMIXA)
 
     This function takes positional arguments as follows:
     - args[0] the name of the test
@@ -34,18 +35,20 @@ def emixa(args) -> None:
     >>> emixa(['-f', '-d=4', 'ApproxAdderSpec', 32, 8])
 
     Or from the command line as follows:
-    >>> python3 emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 32 8
+    >>> ./emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 32 8
     
     Any additional parameters beyond those required by the specified test are
     ignored and discarded. Integer arguments can be passed as ranges in the 
     format of start:stop[:by] denoting the range [start:stop] as follows:
-    >>> python3 emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 16:33 8
+    >>> ./emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 16:33 8
     """
     # Capture any potential arguments to the tests
     kvargmap = {}
     for kvarg in filter(lambda arg: arg.startswith('-'), args):
         key = kvarg.lower().replace('-', '')
-        if key == 'f' or key == 'function':
+        if key == 'h' or key == 'help':
+            kvargmap['help'] = True
+        elif key == 'f' or key == 'function':
             kvargmap['function'] = True
         elif key == 'p' or key == 'plot':
             kvargmap['plot'] = True
@@ -53,6 +56,11 @@ def emixa(args) -> None:
             kvargmap['verbose'] = True
         else:
             print(f'{_warning} Unrecognized command line argument {key}')
+    
+    # If the help flag was passed, don't do anything
+    if 'help' in kvargmap:
+        print(emixa.__doc__)
+        return
 
     # If no arguments are passed, don't do anything
     if 'function' not in kvargmap and 'plot' not in kvargmap:
