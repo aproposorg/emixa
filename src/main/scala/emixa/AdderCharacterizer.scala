@@ -35,7 +35,17 @@ abstract class AdderCharacterizer extends Characterizer {
       mod.io.a.poke(a.U)
       (0 until (1 << mod.width)).map { b =>
         mod.io.b.poke(b.U)
-        mod.io.s.peek().litValue - ((BigInt(a) + BigInt(b)) & mask)
+        mod.clock.step()
+        // Optionally sign-extend sum and result and return the difference
+        val sum = (BigInt(a) + BigInt(b)) & mask
+        val res = mod.io.s.peek().litValue
+        sgn match {
+          case Signed =>
+            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
+            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
+            xres - xsum
+          case _ => res - sum
+        }
       }
     }
 
@@ -60,9 +70,18 @@ abstract class AdderCharacterizer extends Characterizer {
       for (a <- 0 until (1 << mod.width); b <- 0 until (1 << mod.width)) {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
-        val sum = (BigInt(a) + BigInt(b)) & mask
-        if (results.contains(sum)) results(sum) += (mod.io.s.peek().litValue - sum)
-        else results(sum) = mutable.ArrayBuffer(mod.io.s.peek().litValue - sum)
+        // Optionally sign-extend sum and result and compute the difference
+        val sum  = (BigInt(a) + BigInt(b)) & mask
+        val res  = mod.io.s.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
+            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
+            xres - xsum
+          case _ => res - sum
+        }
+        if (results.contains(sum)) results(sum) += diff
+        else results(sum) = mutable.ArrayBuffer(diff)
       }
     } else { // random run with fewer tests
       val nTests = 1 << (scala.math.sqrt(mod.width) + 1).round.toInt
@@ -71,9 +90,18 @@ abstract class AdderCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         val b = BigInt(mod.width, rng)
         mod.io.b.poke(b.U)
-        val sum = (a + b) & mask
-        if (results.contains(sum)) results(sum) += (mod.io.s.peek().litValue - sum)
-        else results(sum) = mutable.ArrayBuffer(mod.io.s.peek().litValue - sum)
+        // Optionally sign-extend sum and result and compute the difference
+        val sum  = (a + b) & mask
+        val res  = mod.io.s.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
+            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
+            xres - xsum
+          case _ => res - sum
+        }
+        if (results.contains(sum)) results(sum) += diff
+        else results(sum) = mutable.ArrayBuffer(diff)
       }
     }
 
@@ -98,8 +126,17 @@ abstract class AdderCharacterizer extends Characterizer {
       for (a <- 0 until (1 << mod.width); b <- 0 until (1 << mod.width)) {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
-        val sum = (BigInt(a) + BigInt(b)) & mask
-        results += ((BigInt(a), BigInt(b)) -> (mod.io.s.peek().litValue - sum))
+        // Optionally sign-extend sum and result and compute the difference
+        val sum  = (BigInt(a) + BigInt(b)) & mask
+        val res  = mod.io.s.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
+            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
+            xres - xsum
+          case _ => res - sum
+        }
+        results += ((BigInt(a), BigInt(b)) -> diff)
       }
     } else { // random run with fewer tests
       val nTests = 1 << (scala.math.sqrt(mod.width) + 1).round.toInt
@@ -108,8 +145,17 @@ abstract class AdderCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         val b = BigInt(mod.width, rng)
         mod.io.b.poke(b.U)
-        val sum = (a + b) & mask
-        results += ((a, b) -> (mod.io.s.peek().litValue - sum))
+        // Optionally sign-extend sum and result and compute the difference
+        val sum  = (a + b) & mask
+        val res  = mod.io.s.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
+            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
+            xres - xsum
+          case _ => res - sum
+        }
+        results += ((a, b) -> diff)
       }
     }
 

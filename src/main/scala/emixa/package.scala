@@ -1,6 +1,6 @@
 
 import chisel3._
-import chiseltest.{ChiselScalatestTester, VerilatorBackendAnnotation}
+import chiseltest.{ChiselScalatestTester, VerilatorBackendAnnotation, WriteVcdAnnotation}
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.{DataOutputStream, FileOutputStream, File}
@@ -63,7 +63,7 @@ package object emixa {
       println(help[T])
       throw new IllegalArgumentException("arguments missing for test")
     }
-    const.zip(split).map { case ((nme, tpe), arg) =>
+    const.zip(split).map { case ((_, tpe), arg) =>
       val conv = tpe match {
         case bte  if bte  =:= ru.typeOf[Byte]    => arg.toByteOption.map(Byte.box(_))
         case shrt if shrt =:= ru.typeOf[Short]   => arg.toShortOption.map(Short.box(_))
@@ -138,7 +138,7 @@ package object emixa {
     private[emixa] val path = s"$ResultPath${this.getClass.getSimpleName}"
 
     /** Check if Verilator is available for simulations */
-    private[emixa] val symAnnos = if ("which verilator".! == 0) Seq(VerilatorBackendAnnotation) else Seq()
+    private[emixa] val symAnnos = if ("which verilator".! == 0) Seq(VerilatorBackendAnnotation, WriteVcdAnnotation) else Seq(WriteVcdAnnotation)
 
     /** Create folders to result file path */
     Files.createDirectories(Paths.get(path))

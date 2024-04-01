@@ -13,6 +13,8 @@ from emixa.util import _info, _warning, _error
 # TODO Implement support for passing named parameters to the Scala test.
 #
 # TODO Implement support for different bit-width operands in multipliers.
+#
+# TODO Implement support for defining default arguments in tests.
 
 def emixa(args) -> None:
     """

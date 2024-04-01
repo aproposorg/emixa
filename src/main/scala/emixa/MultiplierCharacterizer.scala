@@ -1,6 +1,7 @@
 
 package emixa
 import Characterization._
+import Signedness._
 
 import chisel3._
 import chiseltest._
@@ -30,12 +31,29 @@ abstract class MultiplierCharacterizer extends Characterizer {
     println(s"${_info} $chartype $sgn multiplier characterization")
 
     // Run through all input combinations and store the error distance results
-    val mask = ((BigInt(1) << mod.aWidth) - 1)
+    val pWidth = mod.aWidth + mod.bWidth
+    val mask = ((BigInt(1) << pWidth) - 1)
     val results = (0 until (1 << mod.aWidth)).flatMap { a =>
       mod.io.a.poke(a.U)
       (0 until (1 << mod.aWidth)).map { b =>
         mod.io.b.poke(b.U)
-        (mod.io.p.peek().litValue & mask) - ((BigInt(a) * BigInt(b)) & mask)
+        // Optionally sign-extend product and result and return the difference
+        val (ga, gb) = (BigInt(a), BigInt(b))
+        val prd = (sgn match {
+          case Signed =>
+            val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
+            val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
+            xa * xb
+          case _ => ga * gb
+        }) & mask
+        val res = mod.io.p.peek().litValue
+        sgn match {
+          case Signed =>
+            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
+            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
+            xres - xprd
+          case _ => res - prd
+        }
       }
     }
 
@@ -54,16 +72,33 @@ abstract class MultiplierCharacterizer extends Characterizer {
 
     // Run through a load of random input combinations and store the
     // error results per result
-    val mask = ((BigInt(1) << mod.aWidth) - 1)
+    val pWidth = mod.aWidth + mod.bWidth
+    val mask = ((BigInt(1) << pWidth) - 1)
     val rng  = new scala.util.Random(42)
     val results = mutable.Map.empty[BigInt, mutable.ArrayBuffer[BigInt]]
     if (mod.aWidth <= 10) { // exhaustive run
       for (a <- 0 until (1 << mod.aWidth); b <- 0 until (1 << mod.aWidth)) {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
-        val prod = (BigInt(a) * BigInt(b)) & mask
-        if (results.contains(prod)) results(prod) += ((mod.io.p.peek().litValue & mask) - prod)
-        else results(prod) = mutable.ArrayBuffer((mod.io.p.peek().litValue & mask) - prod)
+        // Optionally sign-extend product and result and compute the difference
+        val (ga, gb) = (BigInt(a), BigInt(b))
+        val prd = (sgn match {
+          case Signed =>
+            val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
+            val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
+            xa * xb
+          case _ => ga * gb
+        }) & mask
+        val res  = mod.io.p.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
+            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
+            xres - xprd
+          case _ => res - prd
+        }
+        if (results.contains(prd)) results(prd) += diff
+        else results(prd) = mutable.ArrayBuffer(diff)
       }
     } else { // random run with fewer tests
       val nTests = 1 << (scala.math.sqrt(mod.aWidth) + 1).round.toInt
@@ -72,9 +107,24 @@ abstract class MultiplierCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         val b = BigInt(mod.aWidth, rng)
         mod.io.b.poke(b.U)
-        val prod = (a * b) & mask
-        if (results.contains(prod)) results(prod) += ((mod.io.p.peek().litValue & mask) - prod)
-        else results(prod) = mutable.ArrayBuffer((mod.io.p.peek().litValue & mask) - prod)
+        // Optionally sign-extend product and result and compute the difference
+        val prd = (sgn match {
+          case Signed =>
+            val xa = if (a.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | a else a
+            val xb = if (b.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | b else b
+            xa * xb
+          case _ => a * b
+        }) & mask
+        val res  = mod.io.p.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
+            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
+            xres - xprd
+          case _ => res - prd
+        }
+        if (results.contains(prd)) results(prd) += diff
+        else results(prd) = mutable.ArrayBuffer(diff)
       }
     }
 
@@ -93,15 +143,32 @@ abstract class MultiplierCharacterizer extends Characterizer {
 
     // Run through a load of random input combinations and store the
     // error results per domain
-    val mask = ((BigInt(1) << mod.aWidth) - 1)
+    val pWidth = mod.aWidth + mod.bWidth
+    val mask = ((BigInt(1) << pWidth) - 1)
     val rng  = new scala.util.Random(42)
     val results = mutable.Map.empty[(BigInt, BigInt), BigInt]
     if (mod.aWidth <= 10) { // exhaustive run
       for (a <- 0 until (1 << mod.aWidth); b <- 0 until (1 << mod.aWidth)) {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
-        val prod = (BigInt(a) * BigInt(b)) & mask
-        results += ((BigInt(a), BigInt(b)) -> ((mod.io.p.peek().litValue & mask) - prod))
+        // Optionally sign-extend product and result and compute the difference
+        val (ga, gb) = (BigInt(a), BigInt(b))
+        val prd = (sgn match {
+          case Signed =>
+            val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
+            val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
+            xa * xb
+          case _ => ga * gb
+        }) & mask
+        val res  = mod.io.p.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
+            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
+            xres - xprd
+          case _ => res - prd
+        }
+        results += ((ga, gb) -> diff)
       }
     } else { // random run with fewer tests
       val nTests = 1 << (scala.math.sqrt(mod.aWidth) + 1).round.toInt
@@ -110,8 +177,23 @@ abstract class MultiplierCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         val b = BigInt(mod.aWidth, rng)
         mod.io.b.poke(b.U)
-        val prod = (a * b) & mask
-        results += ((a, b) -> ((mod.io.p.peek().litValue & mask) - prod))
+        // Optionally sign-extend product and result and compute the difference
+        val prd = (sgn match {
+          case Signed =>
+            val xa = if (a.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | a else a
+            val xb = if (b.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | b else b
+            xa * xb
+          case _ => a * b
+        }) & mask
+        val res  = mod.io.p.peek().litValue
+        val diff = sgn match {
+          case Signed =>
+            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
+            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
+            xres - xprd
+          case _ => res - prd
+        }
+        results += ((a, b) -> diff)
       }
     }
 

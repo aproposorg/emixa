@@ -24,7 +24,7 @@ def gen_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> str:
         __min = -(1 << (char.width-1))
         __max = (1 << (char.width-1)) - 1
     def data_format(ls):
-        return ',\n'.join(list(map(str, ls)))
+        return ',\n'.join([f"[{', '.join(map(str, row))}]" for row in ls])
     description = f"""\n__errors = [{data_format(char.data)}]\n\nclass {modname}:
     __array_ufunc__ = None
     __min  = {__min}
@@ -111,25 +111,25 @@ def gen_random2d(char: Random2dChar, diffparams: list = []) -> str:
     # Determine the type of operation to implement
     (opsymb, opname) = ('+', 'add') if char.module == 'adder' else ('*', 'mul')
     if not char.sgn:
-        outro = f"""return pos"""
+        outro = f"""wghts = __model_weights[(exact >> self.__dom_shft) & self.__dom_mask]
+        med   = int(wghts[0] * exact + wghts[1])
+        pos   = (exact + med) & self.__mask
+        return pos"""
     else:
-        outro = f"""sext  = -(pos >> {char.width - 1}) << {char.width}
+        outro = f"""wghts = __model_weights[(exact >> self.__dom_shft) & self.__dom_mask]
+        med   = int(wghts[0] * exact + wghts[1])
+        pos   = (exact + med) & self.__mask
+        sext  = -(pos >> {char.width - 1}) << {char.width}
         return sext | pos"""
     description += f"""\n
     def __{opname}__(self, y: int):
         assert self.__min <= y <= self.__max
         exact = (self.x {opsymb} y) & self.__mask
-        wghts = __model_weights[(exact >> self.__dom_shft) & self.__dom_mask]
-        med   = int(wghts[0] * exact + wghts[1])
-        pos   = (exact + med) & self.__mask
         {outro}
 
     def __r{opname}__(self, y: int):
         assert self.__min <= y <= self.__max
         exact = (y {opsymb} self.x) & self.__mask
-        wghts = __model_weights[(exact >> self.__dom_shft) & self.__dom_mask]
-        med   = int(wghts[0] * exact + wghts[1])
-        pos   = (exact + med) & self.__mask
         {outro}\n"""
 
     # Write the result to a file and return the path
@@ -190,23 +190,23 @@ def gen_random3d(char: Random3dChar, diffparams: list = []) -> str:
     # Determine the type of operation to implement
     (opsymb, opname) = ('+', 'add') if char.module == 'adder' else ('*', 'mul')
     if not char.sgn:
-        outro = f"""return pos"""
+        outro = f"""med   = __meds[(self.x >> self.__dom_shft) & self.__dom_mask][(y >> self.__dom_shft) & self.__dom_mask]
+        pos   = int(exact + med) & self.__mask
+        return pos"""
     else:
-        outro = f"""sext  = -(pos >> {char.width - 1}) << {char.width}
+        outro = f"""med   = __meds[(self.x >> self.__dom_shft) & self.__dom_mask][(y >> self.__dom_shft) & self.__dom_mask]
+        pos   = int(exact + med) & self.__mask
+        sext  = -(pos >> {char.width - 1}) << {char.width}
         return sext | pos"""
     description += f"""\n
     def __{opname}__(self, y: int):
         assert self.__min <= y <= self.__max
         exact = (self.x {opsymb} y) & self.__mask
-        med   = __meds[(self.x >> self.__dom_shft) & self.__dom_mask][(y >> self.__dom_shft) & self.__dom_mask]
-        pos   = int(exact + med) & self.__mask
         {outro}
 
     def __r{opname}__(self, y: int):
         assert self.__min <= y <= self.__max
         exact = (y {opsymb} self.x) & self.__mask
-        med   = __meds[(self.x >> self.__dom_shft) & self.__dom_mask][(y >> self.__dom_shft) & self.__dom_mask]
-        pos   = int(exact + med) & self.__mask
         {outro}\n"""
 
     # Write the result to a file and return the path
