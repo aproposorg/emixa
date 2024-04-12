@@ -101,7 +101,7 @@ package object emixa {
    */
   private[emixa] def getNTests(width: Int): Int = {
     require(width >= 0)
-    1 << (1.67 * scala.math.sqrt(width) + 1).round.toInt
+    1 << (1.25 * scala.math.sqrt(width) + 1).round.toInt
   }
 
   /** Signedness of the inexact arithmetic unit to characterize */
