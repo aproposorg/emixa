@@ -83,9 +83,11 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # Plot the histogram
         fig, ax = plt.subplots(figsize=_config['figsize'])
-        counts, bins = np.histogram(data, 1 << opwdth if opwdth <= 6 else 64)
+        nbins = 1 << opwdth if opwdth <= 6 else 64
+        counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
-        ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center')
+        width = .8 * (np.max(bins) - np.min(bins)) / nbins
+        ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width)
         sax = ax.twinx()
         sax.plot(bins[:-1], np.cumsum(counts), color='r')
         ax.set_xlabel('Error magnitude')
@@ -154,9 +156,11 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
         # Plot the histogram
         fig, ax = plt.subplots(figsize=_config['figsize'])
-        counts, bins = np.histogram(data, 1 << opwdth if opwdth <= 6 else 64)
+        nbins = 1 << opwdth if opwdth <= 6 else 64
+        counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
-        ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center')
+        width = .8 * (np.max(bins) - np.min(bins)) / nbins
+        ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width)
         sax = ax.twinx()
         sax.plot(bins[:-1], np.cumsum(counts), color='r')
         ax.set_xlabel('Error magnitude')
