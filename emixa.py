@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 
 from emixa.characterization import characterize
 from emixa.function import funcgen
@@ -109,4 +110,5 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(emixa.__doc__)
     else:
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
         emixa(sys.argv[1:])

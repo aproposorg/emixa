@@ -107,11 +107,13 @@ def read_data_random2d(srcpath: str) -> Tuple[dict, int]:
             print(f'{_error} Operators in random 2D characterization must have the same bit width, got {awidth} and {bwidth}')
             return False
         data = {}
-        for i in range(8, len(bytes), 16):
+        i = 8
+        while i < len(bytes):
             res = struct.unpack('>q', bytes[i:i+8])[0]
-            med = struct.unpack('>d', bytes[i+8:i+16])[0]
-            data[res] = med
-    
+            cnt = struct.unpack('>i', bytes[i+8:i+12])[0]
+            data[res] = [struct.unpack('>q', bytes[i+12+j*8:i+12+(j+1)*8])[0] for j in range(cnt)]
+            i = i + 12 + cnt * 8
+
     return data, awidth
 
 
@@ -372,8 +374,9 @@ def characterize(args: list, kvargmap: dict) -> list:
     Returns list(Characterization) | None if no characterization was performed
     """
     name = args.pop(0)
-    path = f'./output/{name}'
     test_cmd = f'testOnly {name}'
+    name = name.split('.')[-1]
+    path = f'./output/{name}'
 
     # If any named arguments are passed, extract the names of the arguments 
     # required by the test and position the passed arguments accordingly,

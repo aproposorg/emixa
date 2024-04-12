@@ -28,6 +28,12 @@ abstract class AdderCharacterizer extends Characterizer {
     // Write something to the terminal
     println(s"${_info} $chartype $sgn adder characterization")
 
+    /** Optionally sign-extend a result from the adder */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(mod.width-1)) (BigInt(-1) << mod.width) | num else num
+      case _ => num
+    }
+
     // Run through all input combinations and store the error distance results
     val mask = ((BigInt(1) << mod.width) - 1)
     mod.io.cin.poke(false.B)
@@ -37,15 +43,9 @@ abstract class AdderCharacterizer extends Characterizer {
         mod.io.b.poke(b.U)
         mod.clock.step()
         // Optionally sign-extend sum and result and return the difference
-        val sum = (BigInt(a) + BigInt(b)) & mask
-        val res = mod.io.s.peek().litValue
-        sgn match {
-          case Signed =>
-            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
-            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
-            xres - xsum
-          case _ => res - sum
-        }
+        val sum = sext((BigInt(a) + BigInt(b)) & mask)
+        val res = sext(mod.io.s.peek().litValue)
+        res - sum
       }
     }
 
@@ -60,6 +60,12 @@ abstract class AdderCharacterizer extends Characterizer {
     // Write something to the terminal
     println(s"${_info} $chartype $sgn adder characterization")
 
+    /** Optionally sign-extend a result from the adder */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(mod.width-1)) (BigInt(-1) << mod.width) | num else num
+      case _ => num
+    }
+
     // Run through a load of random input combinations and store the
     // error results per result
     val mask = ((BigInt(1) << mod.width) - 1)
@@ -71,42 +77,30 @@ abstract class AdderCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
         // Optionally sign-extend sum and result and compute the difference
-        val sum  = (BigInt(a) + BigInt(b)) & mask
-        val res  = mod.io.s.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
-            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
-            xres - xsum
-          case _ => res - sum
-        }
+        val sum  = sext((BigInt(a) + BigInt(b)) & mask)
+        val res  = sext(mod.io.s.peek().litValue)
+        val diff = res - sum
         if (results.contains(sum)) results(sum) += diff
         else results(sum) = mutable.ArrayBuffer(diff)
       }
     } else { // random run with fewer tests
-      val nTests = 1 << (scala.math.sqrt(mod.width) + 1).round.toInt
+      val nTests = getNTests(mod.width)
       for (_ <- 0 until nTests * nTests) {
         val a = BigInt(mod.width, rng)
         mod.io.a.poke(a.U)
         val b = BigInt(mod.width, rng)
         mod.io.b.poke(b.U)
         // Optionally sign-extend sum and result and compute the difference
-        val sum  = (a + b) & mask
-        val res  = mod.io.s.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
-            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
-            xres - xsum
-          case _ => res - sum
-        }
+        val sum  = sext((a + b) & mask)
+        val res  = sext(mod.io.s.peek().litValue)
+        val diff = res - sum
         if (results.contains(sum)) results(sum) += diff
         else results(sum) = mutable.ArrayBuffer(diff)
       }
     }
 
     // Output results to a binary file
-    _writeRand2D(results.map { case (s, ress) => s -> ress.sum.toDouble / ress.size }.toMap, mod.width, mod.width)
+    _writeRand2D(results.map { case (sm, ls) => sm -> ls.toArray }.toMap, mod.width, mod.width)
     println(s"${_info} Wrote results to $path/errors.bin")
   }
 
@@ -115,6 +109,12 @@ abstract class AdderCharacterizer extends Characterizer {
 
     // Write something to the terminal
     println(s"${_info} $chartype $sgn adder characterization")
+
+    /** Optionally sign-extend a result from the adder */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(mod.width-1)) (BigInt(-1) << mod.width) | num else num
+      case _ => num
+    }
 
     // Run through a load of random input combinations and store the
     // error results per domain
@@ -127,34 +127,22 @@ abstract class AdderCharacterizer extends Characterizer {
         mod.io.a.poke(a.U)
         mod.io.b.poke(b.U)
         // Optionally sign-extend sum and result and compute the difference
-        val sum  = (BigInt(a) + BigInt(b)) & mask
-        val res  = mod.io.s.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
-            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
-            xres - xsum
-          case _ => res - sum
-        }
+        val sum  = sext((BigInt(a) + BigInt(b)) & mask)
+        val res  = sext(mod.io.s.peek().litValue)
+        val diff = res - sum
         results += ((BigInt(a), BigInt(b)) -> diff)
       }
     } else { // random run with fewer tests
-      val nTests = 1 << (scala.math.sqrt(mod.width) + 1).round.toInt
+      val nTests = getNTests(mod.width)
       for (_ <- 0 until nTests * nTests) {
         val a = BigInt(mod.width, rng)
         mod.io.a.poke(a.U)
         val b = BigInt(mod.width, rng)
         mod.io.b.poke(b.U)
         // Optionally sign-extend sum and result and compute the difference
-        val sum  = (a + b) & mask
-        val res  = mod.io.s.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xsum = if (sum.testBit(mod.width-1)) (BigInt(-1) << mod.width) | sum else sum
-            val xres = if (res.testBit(mod.width-1)) (BigInt(-1) << mod.width) | res else res
-            xres - xsum
-          case _ => res - sum
-        }
+        val sum  = sext((a + b) & mask)
+        val res  = sext(mod.io.s.peek().litValue)
+        val diff = res - sum
         results += ((a, b) -> diff)
       }
     }

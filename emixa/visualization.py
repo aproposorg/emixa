@@ -76,7 +76,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # Establish some constants regarding the design
         opwdth  = char.width
-        reswdth = char.width if char.module == 'adder' else 2*char.width
+        reswdth = opwdth if char.module == 'adder' else 2*opwdth
 
         # Count the error magitudes
         data = np.array(char.data).reshape(-1)
@@ -86,13 +86,14 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
                 resdict[res] += 1
             else:
                 resdict[res] = 1
+        cnt = len(data)
 
         # Plot the counts
         fig, ax = plt.subplots(figsize=_config['figsize'])
         keys = np.sort(list(resdict.keys()))
-        data = np.array([resdict[k] / len(data) for k in keys])
-        ax.bar(keys, data, zorder=4, width=1)
-        ax.plot(keys, np.cumsum(data), color='r')
+        bars = np.array([resdict[k] / cnt for k in keys])
+        ax.bar(keys, bars, zorder=4, width=1)
+        ax.plot(keys, np.cumsum(bars), color='r')
         ax.set_xlabel('Error magnitude')
         ax.set_ylabel('Relative frequency')
         ax.grid(_config['grid'])
@@ -129,12 +130,36 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
         # Plot the results
         fig, ax = plt.subplots(figsize=_config['figsize'])
         keys = list(char.data.keys())
-        data = [char.data[k] for k in keys]
+        data = [np.mean(char.data[k]) for k in keys]
         keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
         ax.bar(keys, data, zorder=4, width=1)
         ax.set_xlim(xlim)
         ax.set_xlabel(result)
         ax.set_ylabel('Mean error')
+        ax.grid(_config['grid'])
+        fig.tight_layout()
+        fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
+        plotpaths.append(path)
+
+    # PLOT 2: Histogram of error magnitudes
+    with rc_context(_config['rc_context']):
+        path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
+
+        # Establish some constants regarding the design
+        opwdth  = char.width
+        reswdth = opwdth if char.module == 'adder' else 2*opwdth
+
+        # Filter the non-zero errors
+        data = []
+        for res in char.data.keys():
+            data.extend([v for v in char.data[res] if v != 0])
+
+        # Plot the histogram
+        fig, ax = plt.subplots(figsize=_config['figsize'])
+        counts, bins = np.histogram(data, 1 << opwdth if opwdth <= 6 else 64)
+        counts = counts / counts.sum()
+        ax.stairs(counts, bins)
+        ax.plot(bins[:-1], np.cumsum(counts), color='r')
         ax.grid(_config['grid'])
         fig.tight_layout()
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])

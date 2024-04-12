@@ -95,6 +95,15 @@ package object emixa {
    * The EMIXA library components
    */
 
+  /** Compute the number of random tests to execute for a module
+   * @param width the width of the module operands
+   * @return a number of tests
+   */
+  private[emixa] def getNTests(width: Int): Int = {
+    require(width >= 0)
+    1 << (1.67 * scala.math.sqrt(width) + 1).round.toInt
+  }
+
   /** Signedness of the inexact arithmetic unit to characterize */
   object Signedness extends Enumeration {
     type Signedness = Value
@@ -187,12 +196,13 @@ package object emixa {
      * @param results a map of results from the characterization
      * @param params any number of integral parameters to output
      */
-    private[emixa] def _writeRand2D(results: Map[BigInt, Double], params: Int*): Unit = {
+    private[emixa] def _writeRand2D(results: Map[BigInt, Array[BigInt]], params: Int*): Unit = {
       val os = new DataOutputStream(new FileOutputStream(new File(s"$path/errors.bin")))
       params.foreach(param => os.writeInt(param))
-      results.foreach { case (sum, res) =>
-        os.writeLong(sum.longValue)
-        os.writeDouble(res)
+      results.foreach { case (sm, ls) =>
+        os.writeLong(sm.longValue)
+        os.writeInt(ls.size)
+        ls.foreach(rs => os.writeLong(rs.longValue))
       }
       os.flush()
       os.close()

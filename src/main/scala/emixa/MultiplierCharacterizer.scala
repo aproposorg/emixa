@@ -26,12 +26,18 @@ abstract class MultiplierCharacterizer extends Characterizer {
     assume(mod.aWidth <= 10 && mod.bWidth <= 10,
       "cannot exhaustively characterize multipliers with more than 10-bit inputs")
     assume(mod.aWidth == mod.bWidth, "cannot characterize multipliers with non-equal input bit-widths")
+    val pWidth = mod.aWidth + mod.bWidth
 
     // Write something to the terminal
     println(s"${_info} $chartype $sgn multiplier characterization")
 
+    /** Optionally sign-extend a result from the multiplier */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(pWidth-1)) (BigInt(-1) << pWidth) | num else num
+      case _ => num
+    }
+
     // Run through all input combinations and store the error distance results
-    val pWidth = mod.aWidth + mod.bWidth
     val mask = ((BigInt(1) << pWidth) - 1)
     val results = (0 until (1 << mod.aWidth)).flatMap { a =>
       mod.io.a.poke(a.U)
@@ -39,21 +45,15 @@ abstract class MultiplierCharacterizer extends Characterizer {
         mod.io.b.poke(b.U)
         // Optionally sign-extend product and result and return the difference
         val (ga, gb) = (BigInt(a), BigInt(b))
-        val prd = (sgn match {
+        val prd = sext((sgn match {
           case Signed =>
             val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
             val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
             xa * xb
           case _ => ga * gb
-        }) & mask
-        val res = mod.io.p.peek().litValue
-        sgn match {
-          case Signed =>
-            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
-            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
-            xres - xprd
-          case _ => res - prd
-        }
+        }) & mask)
+        val res = sext(mod.io.p.peek().litValue)
+        res - prd
       }
     }
 
@@ -66,13 +66,19 @@ abstract class MultiplierCharacterizer extends Characterizer {
     assume(mod.aWidth <= 64 && mod.bWidth <= 64,
       "cannot randomly characterize multipliers with more than 64-bit inputs")
     assume(mod.aWidth == mod.bWidth, "cannot characterize multipliers with non-equal input bit-widths")
+    val pWidth = mod.aWidth + mod.bWidth
 
     // Write something to the terminal
     println(s"${_info} $chartype $sgn multiplier characterization")
 
+    /** Optionally sign-extend a result from the multiplier */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(pWidth-1)) (BigInt(-1) << pWidth) | num else num
+      case _ => num
+    }
+
     // Run through a load of random input combinations and store the
     // error results per result
-    val pWidth = mod.aWidth + mod.bWidth
     val mask = ((BigInt(1) << pWidth) - 1)
     val rng  = new scala.util.Random(42)
     val results = mutable.Map.empty[BigInt, mutable.ArrayBuffer[BigInt]]
@@ -82,54 +88,42 @@ abstract class MultiplierCharacterizer extends Characterizer {
         mod.io.b.poke(b.U)
         // Optionally sign-extend product and result and compute the difference
         val (ga, gb) = (BigInt(a), BigInt(b))
-        val prd = (sgn match {
+        val prd = sext((sgn match {
           case Signed =>
             val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
             val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
             xa * xb
           case _ => ga * gb
-        }) & mask
-        val res  = mod.io.p.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
-            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
-            xres - xprd
-          case _ => res - prd
-        }
+        }) & mask)
+        val res  = sext(mod.io.p.peek().litValue)
+        val diff = res - prd
         if (results.contains(prd)) results(prd) += diff
         else results(prd) = mutable.ArrayBuffer(diff)
       }
     } else { // random run with fewer tests
-      val nTests = 1 << (scala.math.sqrt(mod.aWidth) + 1).round.toInt
+      val nTests = getNTests(scala.math.max(mod.aWidth, mod.bWidth))
       for (_ <- 0 until nTests * nTests) {
         val a = BigInt(mod.aWidth, rng)
         mod.io.a.poke(a.U)
         val b = BigInt(mod.aWidth, rng)
         mod.io.b.poke(b.U)
         // Optionally sign-extend product and result and compute the difference
-        val prd = (sgn match {
+        val prd = sext((sgn match {
           case Signed =>
             val xa = if (a.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | a else a
             val xb = if (b.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | b else b
             xa * xb
           case _ => a * b
-        }) & mask
-        val res  = mod.io.p.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
-            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
-            xres - xprd
-          case _ => res - prd
-        }
+        }) & mask)
+        val res  = sext(mod.io.p.peek().litValue)
+        val diff = res - prd
         if (results.contains(prd)) results(prd) += diff
         else results(prd) = mutable.ArrayBuffer(diff)
       }
     }
 
     // Output results to a binary file
-    _writeRand2D(results.map { case (p, ress) => p -> ress.sum.toDouble / ress.size }.toMap, mod.aWidth, mod.bWidth)
+    _writeRand2D(results.map { case (pd, ls) => pd -> ls.toArray }.toMap, mod.aWidth, mod.bWidth)
     println(s"${_info} Wrote results to $path/errors.bin")
   }
 
@@ -137,13 +131,19 @@ abstract class MultiplierCharacterizer extends Characterizer {
     assume(mod.aWidth <= 64 && mod.bWidth <= 64,
       "cannot randomly characterize multipliers with more than 64-bit inputs")
     assume(mod.aWidth == mod.bWidth, "cannot characterize multipliers with non-equal input bit-widths")
+    val pWidth = mod.aWidth + mod.bWidth
 
     // Write something to the terminal
     println(s"${_info} $chartype $sgn multiplier characterization")
 
+    /** Optionally sign-extend a result from the multiplier */
+    def sext(num: BigInt): BigInt = sgn match {
+      case Signed => if (num.testBit(pWidth-1)) (BigInt(-1) << pWidth) | num else num
+      case _ => num
+    }
+
     // Run through a load of random input combinations and store the
     // error results per domain
-    val pWidth = mod.aWidth + mod.bWidth
     val mask = ((BigInt(1) << pWidth) - 1)
     val rng  = new scala.util.Random(42)
     val results = mutable.Map.empty[(BigInt, BigInt), BigInt]
@@ -153,46 +153,34 @@ abstract class MultiplierCharacterizer extends Characterizer {
         mod.io.b.poke(b.U)
         // Optionally sign-extend product and result and compute the difference
         val (ga, gb) = (BigInt(a), BigInt(b))
-        val prd = (sgn match {
+        val prd = sext((sgn match {
           case Signed =>
             val xa = if (ga.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | ga else ga
             val xb = if (gb.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | gb else gb
             xa * xb
           case _ => ga * gb
-        }) & mask
-        val res  = mod.io.p.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
-            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
-            xres - xprd
-          case _ => res - prd
-        }
+        }) & mask)
+        val res  = sext(mod.io.p.peek().litValue)
+        val diff = res - prd
         results += ((ga, gb) -> diff)
       }
     } else { // random run with fewer tests
-      val nTests = 1 << (scala.math.sqrt(mod.aWidth) + 1).round.toInt
+      val nTests = getNTests(scala.math.max(mod.aWidth, mod.bWidth))
       for (_ <- 0 until nTests * nTests) {
         val a = BigInt(mod.aWidth, rng)
         mod.io.a.poke(a.U)
         val b = BigInt(mod.aWidth, rng)
         mod.io.b.poke(b.U)
         // Optionally sign-extend product and result and compute the difference
-        val prd = (sgn match {
+        val prd = sext((sgn match {
           case Signed =>
             val xa = if (a.testBit(mod.aWidth-1)) (BigInt(-1) << mod.aWidth) | a else a
             val xb = if (b.testBit(mod.bWidth-1)) (BigInt(-1) << mod.bWidth) | b else b
             xa * xb
           case _ => a * b
-        }) & mask
-        val res  = mod.io.p.peek().litValue
-        val diff = sgn match {
-          case Signed =>
-            val xprd = if (prd.testBit(pWidth-1)) (BigInt(-1) << pWidth) | prd else prd
-            val xres = if (res.testBit(pWidth-1)) (BigInt(-1) << pWidth) | res else res
-            xres - xprd
-          case _ => res - prd
-        }
+        }) & mask)
+        val res  = sext(mod.io.p.peek().litValue)
+        val diff = res - prd
         results += ((a, b) -> diff)
       }
     }
