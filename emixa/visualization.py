@@ -78,24 +78,20 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
         opwdth  = char.width
         reswdth = opwdth if char.module == 'adder' else 2*opwdth
 
-        # Count the error magitudes
-        data = np.array(char.data).reshape(-1)
-        resdict = {}
-        for res in data:
-            if res in resdict:
-                resdict[res] += 1
-            else:
-                resdict[res] = 1
-        cnt = len(data)
+        # Filter the non-zero errors
+        data = [v for v in np.array(char.data).reshape(-1) if v != 0]
 
-        # Plot the counts
+        # Plot the histogram
         fig, ax = plt.subplots(figsize=_config['figsize'])
-        keys = np.sort(list(resdict.keys()))
-        bars = np.array([resdict[k] / cnt for k in keys])
-        ax.bar(keys, bars, zorder=4, width=1)
-        ax.plot(keys, np.cumsum(bars), color='r')
+        counts, bins = np.histogram(data, 1 << opwdth if opwdth <= 6 else 64)
+        counts = counts / counts.sum()
+        ax.stairs(counts, bins)
+        sax = ax.twinx()
+        sax.plot(bins[:-1], np.cumsum(counts), color='r')
         ax.set_xlabel('Error magnitude')
         ax.set_ylabel('Relative frequency')
+        sax.set_ylabel('Cumulative frequency')
+        sax.tick_params(axis='y', colors='r')
         ax.grid(_config['grid'])
         fig.tight_layout()
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
@@ -159,7 +155,12 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
         counts, bins = np.histogram(data, 1 << opwdth if opwdth <= 6 else 64)
         counts = counts / counts.sum()
         ax.stairs(counts, bins)
-        ax.plot(bins[:-1], np.cumsum(counts), color='r')
+        sax = ax.twinx()
+        sax.plot(bins[:-1], np.cumsum(counts), color='r')
+        ax.set_xlabel('Error magnitude')
+        ax.set_ylabel('Relative frequency')
+        sax.set_ylabel('Cumulative frequency')
+        sax.tick_params(axis='y', colors='r')
         ax.grid(_config['grid'])
         fig.tight_layout()
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
