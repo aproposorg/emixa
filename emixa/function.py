@@ -80,7 +80,7 @@ def gen_random2d(char: Random2dChar, diffparams: list = []) -> str:
     models = []
     for dom in range(1 << ndomslg2):
         xs   = np.array(list(filter(lambda k: (k >> (char.width - ndomslg2)) & __dom_mask == dom, char.data.keys()))).reshape((-1, 1))
-        ys   = np.array(list(map(lambda k: char.data[k], xs[:,0])))
+        ys   = np.array(list(map(lambda k: np.mean(char.data[k]), xs[:,0])))
         model = LinearRegression().fit(xs, ys)
         models.append([model.coef_[0], model.intercept_])
 

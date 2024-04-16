@@ -13,6 +13,9 @@ _config = {
     'rc_context' : { 'font.family' : 'Times New Roman', 'font.size' : 12, 'mathtext.fontset' : 'cm' }
 }
 
+def geomean(ls: list) -> float:
+    return np.prod(np.power(ls, 1 / len(ls)))
+
 def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
     """
     Generate some plots from an exhaustive characterization
@@ -26,10 +29,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
     modname = f'{char.module}{"".join(map(lambda p: f"_{p}", diffparams))}'
     plotpaths = []
 
-    # PLOT 1: Mean error per result
     with rc_context(_config['rc_context']):
-        path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-
         # Establish some constants regarding the design
         result  = f"Exact {'sum' if char.module == 'adder' else 'product'}"
         op      = (lambda a, b: a + b) if char.module == 'adder' else (lambda a, b: a * b)
@@ -57,7 +57,8 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
                 else:
                     resdict[res] = [err]
 
-        # Plot the recomputed results
+        # PLOT 1: Mean error per result
+        path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
         fig, ax = plt.subplots(figsize=_config['figsize'])
         keys = list(resdict.keys())
         data = [np.mean(resdict[k]) for k in keys]
@@ -70,18 +71,24 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
         plotpaths.append(path)
 
-    # PLOT 2: Histogram of error magnitudes
-    with rc_context(_config['rc_context']):
-        path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
+        # PLOT 2: Mean relative error per result
+        path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
+        fig, ax = plt.subplots(figsize=_config['figsize'])
+        keys = [k for k in keys if k != 0]
+        data = [geomean(np.abs(np.array(resdict[k]) / k)) for k in keys]
+        ax.bar(keys, data, zorder=4, width=1)
+        ax.set_xlim(xlim)
+        ax.set_xlabel(result)
+        ax.set_ylabel('Mean error')
+        ax.grid(_config['grid'])
+        fig.tight_layout()
+        fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
+        plotpaths.append(path)
 
-        # Establish some constants regarding the design
-        opwdth  = char.width
-        reswdth = opwdth if char.module == 'adder' else 2*opwdth
-
+        # PLOT 3: Histogram of error magnitudes
         # Filter the non-zero errors
+        path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
         data = [v for v in np.array(char.data).reshape(-1) if v != 0]
-
-        # Plot the histogram
         fig, ax = plt.subplots(figsize=_config['figsize'])
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
@@ -118,16 +125,15 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
     modname = f'{char.module}{"".join(map(lambda p: f"_{p}", diffparams))}'
     plotpaths = []
 
-    # PLOT 1: Mean error per result
     with rc_context(_config['rc_context']):
-        path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-
         # Establish some constants regarding the design
         result  = f"Exact {'sum' if char.module == 'adder' else 'product'}"
-        reswdth = char.width if char.module == 'adder' else 2*char.width
+        opwdth  = char.width
+        reswdth = opwdth if char.module == 'adder' else 2*opwdth
         xlim    = (-2**(reswdth-1), 2**(reswdth-1)-1) if char.sgn else (0, 2**reswdth-1)
 
-        # Plot the results
+        # PLOT 1: Mean error per result
+        path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
         fig, ax = plt.subplots(figsize=_config['figsize'])
         keys = list(char.data.keys())
         data = [np.mean(char.data[k]) for k in keys]
@@ -141,20 +147,27 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
         plotpaths.append(path)
 
-    # PLOT 2: Histogram of error magnitudes
-    with rc_context(_config['rc_context']):
-        path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
+        # PLOT 2: Mean relative error per result
+        path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
+        fig, ax = plt.subplots(figsize=_config['figsize'])
+        keys = [k for k in char.data.keys() if k != 0]
+        data = [geomean(np.abs(np.array(char.data[k]) / k)) for k in keys]
+        keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
+        ax.bar(keys, data, zorder=4, width=1)
+        ax.set_xlim(xlim)
+        ax.set_xlabel(result)
+        ax.set_ylabel('Mean error')
+        ax.grid(_config['grid'])
+        fig.tight_layout()
+        fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
+        plotpaths.append(path)
 
-        # Establish some constants regarding the design
-        opwdth  = char.width
-        reswdth = opwdth if char.module == 'adder' else 2*opwdth
-
+        # PLOT 3: Histogram of error magnitudes
         # Filter the non-zero errors
+        path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
         data = []
         for res in char.data.keys():
             data.extend([v for v in char.data[res] if v != 0])
-
-        # Plot the histogram
         fig, ax = plt.subplots(figsize=_config['figsize'])
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
