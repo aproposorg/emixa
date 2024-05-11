@@ -2,10 +2,11 @@
 import numpy as np
 from matplotlib import pyplot as plt, rc_context
 from .characterization import ExhaustiveChar, Random2dChar, Random3dChar
-from .util import _error
+from .util import _warning, _error
 
 _config = {
     'figsize': (5, 3),
+    'figsize_stack': (8, 3),
     'format' : 'pdf',
     'dpi'    : 300,
     'bbox_inches': 'tight',
@@ -26,7 +27,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
     Returns the paths to the result files list(str)
     """
-    modname = f'{char.module}{"".join(map(lambda p: f"_{p}", diffparams))}'
+    modname = f'{char.module}{"".join([f"_{p}" for p in diffparams])}'
     plotpaths = []
 
     with rc_context(_config['rc_context']):
@@ -112,6 +113,49 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
 
 
+def stack_exhaustive(chars: list) -> list:
+    """
+    Generate some stacked plots from a list of exhaustive characterizations
+
+    This function takes arguments as follows
+    - chars the list of exhaustive characterization data
+
+    Returns the paths to the result files list(str) | None
+    """
+    if len(chars) == 0:
+        return None
+
+    modnames  = [f'{char.module}{"".join([f"_{p}" for p in char.params])}' for char in chars]
+    plotpaths = []
+
+    with rc_context(_config['rc_context']):
+        # Establish some constants regarding the designs
+        opwdth = np.max([char.width for char in chars])
+
+        # PLOT 1: Histogram of error magnitudes
+        # Filter the non-zero errors
+        path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
+        fig, ax = plt.subplots(figsize=_config['figsize_stack'])
+        nbins = 1 << opwdth if opwdth <= 6 else 64
+        for char, name in zip(chars, modnames):
+            data = [v for v in np.array(char.data).reshape(-1) if v != 0]
+            counts, bins = np.histogram(data, nbins)
+            counts = counts / counts.sum()
+            width = .8 * (np.max(bins) - np.min(bins)) / nbins
+            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name)
+        ax.set_xlabel('Error magnitude')
+        ax.set_ylim(0)
+        ax.set_ylabel('Relative frequency')
+        ax.grid(_config['grid'])
+        ax.legend(loc='center left', bbox_to_anchor=(1.03, .5))
+        fig.tight_layout()
+        fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
+        plotpaths.append(path)
+
+    return plotpaths
+
+
+
 def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
     """
     Generate some plots from a random 2D characterization
@@ -122,7 +166,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
     Returns the paths to the result files list(str)
     """
-    modname = f'{char.module}{"".join(map(lambda p: f"_{p}", diffparams))}'
+    modname = f'{char.module}{"".join([f"_{p}" for p in diffparams])}'
     plotpaths = []
 
     with rc_context(_config['rc_context']):
@@ -191,6 +235,51 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
 
 
+def stack_random2d(chars: list) -> list:
+    """
+    Generate some stacked plots from a list of random 2D characterizations
+
+    This function takes arguments as follows
+    - chars the list of random 2D characterization data
+
+    Returns the paths to the result files list(str) | None
+    """
+    if len(chars) == 0:
+        return None
+
+    modnames  = [f'{char.module}{"".join([f"_{p}" for p in char.params])}' for char in chars]
+    plotpaths = []
+
+    with rc_context(_config['rc_context']):
+        # Establish some constants regarding the design
+        opwdth = np.max([char.width for char in chars])
+
+        # PLOT 1: Histogram of error magnitudes
+        # Filter the non-zero errors
+        path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
+        fig, ax = plt.subplots(figsize=_config['figsize_stack'])
+        nbins = 1 << opwdth if opwdth <= 6 else 64
+        for char, name in zip(chars, modnames):
+            data = []
+            for res in char.data.keys():
+                data.extend([v for v in char.data[res] if v != 0])
+            counts, bins = np.histogram(data, nbins)
+            counts = counts / counts.sum()
+            width = .8 * (np.max(bins) - np.min(bins)) / nbins
+            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name)
+        ax.set_xlabel('Error magnitude')
+        ax.set_ylim(0)
+        ax.set_ylabel('Relative frequency')
+        ax.grid(_config['grid'])
+        ax.legend(loc='center left', bbox_to_anchor=(1.03, .5))
+        fig.tight_layout()
+        fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
+        plotpaths.append(path)
+
+    return plotpaths
+
+
+
 def visualize_random3d(char: Random3dChar, diffparams: list = []) -> list:
     """
     Generate some plots from a random 3D characterization
@@ -201,7 +290,7 @@ def visualize_random3d(char: Random3dChar, diffparams: list = []) -> list:
 
     Returns the paths to the result files list(str)
     """
-    modname = f'{char.module}{"".join(map(lambda p: f"_{p}", diffparams))}'
+    modname = f'{char.module}{"".join([f"_{p}" for p in diffparams])}'
     plotpaths = []
 
     # PLOT 1: 3D bar chart with MEDs
@@ -214,7 +303,7 @@ def visualize_random3d(char: Random3dChar, diffparams: list = []) -> list:
         # Compute the mean error in a number of input operand domains
         dmns = 4
         if not (dmns != 0 and (dmns & (dmns-1)) == 0):
-            f'{_error} Number of domains for 3D characterizations must be a power of two, got {dmns}'
+            print(f'{_error} Number of domains for 3D characterizations must be a power of two, got {dmns}')
             return []
         opmin   = -2**(opwdth-1) if char.sgn else 0
         dmnstep = (2**opwdth) // dmns
@@ -253,12 +342,13 @@ def visualize_random3d(char: Random3dChar, diffparams: list = []) -> list:
 
 
 
-def visualize(chars: list) -> list:
+def visualize(chars: list, kvargmap: dict) -> list:
     """
     Convert the output from one or more characterizations into plots
 
     This function takes arguments as follows
     - chars a list of characterization data list(Characterization)
+    - kvargmap a dictionary of command line arguments passed to emixa
 
     Returns list(str) | None if no characterization data is passed
     """
@@ -280,7 +370,7 @@ def visualize(chars: list) -> list:
         # Use the predetermined indices to extract the changing parameters
         diffparams = [char.params[i] for i in diffind]
 
-        # Process the data different depending on its type
+        # Process the data differently depending on its type
         if isinstance(char, ExhaustiveChar):
             plotpaths = visualize_exhaustive(char, diffparams)
         elif isinstance(char, Random2dChar):
@@ -291,5 +381,25 @@ def visualize(chars: list) -> list:
         # Don't keep the broken configurations
         if plotpaths is not None:
             paths.extend(plotpaths)
+
+    # Process the plots together if requested
+    if 'stack' in kvargmap:
+        # Filter the broken configurations
+        fltrd_chars = [char for char in chars if char is not None]
+
+        # Process the data into one plot depending on its type
+        if len(fltrd_chars) > 1:
+            head = fltrd_chars[0]
+            if isinstance(head, ExhaustiveChar):
+                plotpaths = stack_exhaustive(fltrd_chars)
+            elif isinstance(head, Random2dChar):
+                plotpaths = stack_random2d(fltrd_chars)
+            elif isinstance(head, Random3dChar):
+                print(f'{_warning} Cannot produce stacked plot for 3D characterizations')
+                plotpaths = None
+
+            # Don't add paths for broken configurations
+            if plotpaths is not None:
+                paths.extend(plotpaths)
 
     return paths

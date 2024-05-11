@@ -38,12 +38,12 @@ def emixa(args) -> None:
     >>> emixa(['-f', '-d=4', 'ApproxAdderSpec', 32, 8])
 
     Or from the command line as follows:
-    >>> ./emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 32 8
+    >>> ./emixa.py [-f[unction]] [-p[lot] [-stack]] [-v[erbose]] ApproxAdderSpec 32 8
     
     Any additional parameters beyond those required by the specified test are
     ignored and discarded. Integer arguments can be passed as ranges in the 
     format of start:stop[:by] denoting the range [start:stop] as follows:
-    >>> ./emixa.py [-f[unction]] [-p[lot]] [-v[erbose]] ApproxAdderSpec 16:33 8
+    >>> ./emixa.py [-f[unction]] [-p[lot] [-stack]] [-v[erbose]] ApproxAdderSpec 16:33 8
     """
     # Capture any potential arguments to the tests
     kvargmap = {}
@@ -55,11 +55,13 @@ def emixa(args) -> None:
             kvargmap['function'] = True
         elif key == 'p' or key == 'plot':
             kvargmap['plot'] = True
+        elif key == 'stack':
+            kvargmap['stack'] = True
         elif key == 'v' or key =='verbose':
             kvargmap['verbose'] = True
         else:
             print(f'{_warning} Unrecognized command line argument {key}')
-    
+
     # If the help flag was passed, don't do anything
     if 'help' in kvargmap:
         print(emixa.__doc__)
@@ -84,7 +86,7 @@ def emixa(args) -> None:
         print(f'{_error} Characterization data is invalid or unavailable, exiting')
         return
     funcpaths = funcgen(chars) if 'function' in kvargmap else None
-    plotpaths = visualize(chars) if 'plot' in kvargmap else None
+    plotpaths = visualize(chars, kvargmap) if 'plot' in kvargmap else None
 
     # Write responses to the console
     if funcpaths is not None:
