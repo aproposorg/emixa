@@ -34,14 +34,18 @@ package object emixa {
    * first constructor
    */
   private[emixa] def info[T : ru.TypeTag] = {
-    val cstctr = ru.typeOf[T].decl(ru.termNames.CONSTRUCTOR).asMethod
-    val args = cstctr.paramLists.head.map(param => (param.name.toString, param.info))
+    val ctor = ru.typeOf[T].decl(ru.termNames.CONSTRUCTOR).asMethod
+    val allAddDefs = ctor.paramLists.drop(1).flatten.forall(_.asTerm.isParamWithDefault)
+    if (ctor.paramLists.size > 1 && !allAddDefs) {
+      print(s"${_error} Cannot runtime instantiate classes with multiple parameter ")
+      println("lists without default arguments in all additional parameter lists")
+      throw new IllegalArgumentException("multiple parameter lists")
+    }
+    val args = ctor.paramLists.head.map(param => (param.name.toString, param.info))
     args
   }
 
-  /** Produce a helper string about a runtime class' first
-   * constructor
-   */
+  /** Produce a helper string about a runtime class' first constructor */
   private[emixa] def help[T : ru.TypeTag] = {
     val const = info[T]
     val name  = ru.typeOf[T].toString.split('.').last
@@ -51,19 +55,27 @@ package object emixa {
     res
   }
 
-  /** Parse a string of whitespace-separated arguments into
-   * the type specified by a runtime class' first constructor
+  /** Parse a map of named arguments into the type specified
+   * by a runtime class' first constructor
    */
-  private[emixa] def parseArgs[T : ru.TypeTag](args: String) = {
+  private[emixa] def parseArgMap[T : ru.TypeTag](args: Map[String, String]) = {
     val const = info[T]
-    val split = args.split(' ')
-    if (split.size < const.size) {
+    if (args.size < const.size) {
       val name = ru.typeOf[T].toString.split('.').last
-      println(s"${_error} Missing arguments for constructor of ${name}: Expected ${const.size}, got ${split.size}. Use:")
+      println(s"${_error} Missing arguments for constructor of ${name}: Expected ${const.size}, got ${args.size}. Use:")
       println(help[T])
       throw new IllegalArgumentException("arguments missing for test")
     }
-    const.zip(split).map { case ((_, tpe), arg) =>
+    const.map(_._1)
+      .filterNot(args.contains(_))
+      .foreach { argName =>
+        val name = ru.typeOf[T].toString.split('.').last
+        println(s"${_error} Missing argument ${argName} for constructor of ${name}. Use:")
+        println(help[T])
+        throw new IllegalArgumentException("arguments missing for test")
+      }
+    const.map { case (name, tpe) =>
+      val arg  = args(name)
       val conv = tpe match {
         case bte  if bte  =:= ru.typeOf[Byte]    => arg.toByteOption.map(Byte.box(_))
         case shrt if shrt =:= ru.typeOf[Short]   => arg.toShortOption.map(Short.box(_))
@@ -155,12 +167,12 @@ package object emixa {
     /** Some tricky overriding to get access to the config map via
      * the ChiselScalatestTester trait
      */
-    private[emixa] var cmdArgs: String = ""
+    private[emixa] var cmdArgMap = Map.empty[String, String]
     private[emixa] var context = new scala.util.DynamicVariable[Option[NoArgTest]](None)
     override def withFixture(test: NoArgTest): org.scalatest.Outcome = {
       require(context.value.isEmpty)
       context.withValue(Some(test)) {
-        cmdArgs = test.configMap.map(_._2).mkString(" ")
+        cmdArgMap = test.configMap.map { case (k, v) => k -> v.toString() }
         super.withFixture(test)
       }
     }
@@ -175,7 +187,7 @@ package object emixa {
      */
     def characterize[T <: Module]()(implicit ct: ClassTag[T], tt: ru.TypeTag[T]): Unit = {
       ct.runtimeClass.getSimpleName() should "characterize" in {
-        test(instantiate(ct.runtimeClass)(parseArgs[T](cmdArgs):_*).asInstanceOf[T])
+        test(instantiate(ct.runtimeClass)(parseArgMap[T](cmdArgMap):_*).asInstanceOf[T])
           .withAnnotations(symAnnos) { dut => _characterize(dut) }
       }
     }

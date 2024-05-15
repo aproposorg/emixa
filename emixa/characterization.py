@@ -303,7 +303,7 @@ def position_args(name: str, args: list) -> Tuple[list, list]:
     test_cmd = f'testOnly {name}'
 
     # Run the SBT command to capture the help message
-    sbt_res = subprocess.run([f'sbt', test_cmd, 'exit'], capture_output=True, text=True).stdout
+    sbt_res = subprocess.run(['sbt', test_cmd, 'exit'], capture_output=True, text=True).stdout
 
     # Analyze the output to determine the argument names, if any
     if not val_sbt_exists(name, sbt_res) or not val_sbt_executed(name, sbt_res):
@@ -378,19 +378,13 @@ def characterize(args: list, kvargmap: dict) -> list:
     name = name.split('.')[-1]
     path = f'./output/{name}'
 
-    # If any named arguments are passed, extract the names of the arguments 
-    # required by the test and position the passed arguments accordingly,
-    # if the test exists
-    has_named = len(list(filter(lambda arg: '=' in arg, args))) != 0
-    if has_named:
-        print(f'{_info} Found named arguments, positioning parameters from the left')
-        pos_args = position_args(test_cmd, args)
-        if pos_args is None:
-            return None
-        params, paramnames = pos_args
-    else:
-        params = args
-        paramnames = [f'arg{i}' for i in range(len(params))]
+    # Extract the names of the arguments required by the test and position 
+    # the passed arguments accordingly,if the test exists
+    pos_args = position_args(test_cmd, args)
+    if pos_args is None:
+        return None
+    params, paramnames = pos_args
+    del pos_args
 
     # Split the arguments and search for any range-type arguments
     params = list(map(lambda prm: parse_range(prm) if ':' in prm else prm, params))
@@ -410,11 +404,11 @@ def characterize(args: list, kvargmap: dict) -> list:
 
         # Give a status on this run with colored highlights on range parameters
         if first:
-            colparams = ' '.join(map(str, runparams))
+            colparams = ' '.join([f'{name}={value}' for name, value in zip(paramnames, runparams)])
         else:
-            colparams = ' '.join(map(lambda p: f'\033[1;33m{p[1]}\033[0;0m' if p[0] in rangeinds else str(p[1]), enumerate(runparams)))
+            colparams = map(lambda p: f'\033[1;33m{p[1]}\033[0;0m' if p[0] in rangeinds else str(p[1]), enumerate(runparams))
+            colparams = ' '.join([f'{name}={value}' for name, value in zip(paramnames, colparams)])
         print(f'{_info} Running characterizer {name} with parameters {colparams}')
-        del colparams
 
         # Run the SBT command for these parameters
         sbt_res = subprocess.run([f'sbt', f'{test_cmd} -- {cmdparams}', 'exit'], capture_output=True, text=True).stdout

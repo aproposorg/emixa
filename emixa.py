@@ -11,8 +11,6 @@ from emixa.util import _info, _warning, _error
 # TODO Implement support for multiple different error modeling strategies in the random characterization flows.
 #      And figure out if the regression strategy is any good.
 #
-# TODO Implement support for passing named parameters to the Scala test.
-#
 # TODO Implement support for different bit-width operands in multipliers.
 #
 # TODO Implement support for defining default arguments in tests.
@@ -27,9 +25,10 @@ def emixa(args) -> None:
     If the first of these arguments is missing, a ValueError exception is raised.
 
     In addition to these, it supports the following command line arguments:
-    - '-f' or '--function' that takes no arguments
-    - '-p' or '--plot' that takes no arguments
-    - '-v' or '--verbose' that takes no arguments
+    - '-f' or '-function' that takes no arguments
+    - '-p' or '-plot' that takes no arguments
+    - '-stack' that takes no arguments
+    - '-v' or '-verbose' that takes no arguments
     If none of these arguments is passed, emixa performs no characterization.
 
     For example, assuming a test 'ApproxAdderSpec' is defined to take two integer
@@ -43,7 +42,13 @@ def emixa(args) -> None:
     Any additional parameters beyond those required by the specified test are
     ignored and discarded. Integer arguments can be passed as ranges in the 
     format of start:stop[:by] denoting the range [start:stop] as follows:
-    >>> ./emixa.py [-f[unction]] [-p[lot] [-stack]] [-v[erbose]] ApproxAdderSpec 16:33 8
+    >>> ./emixa.py [-f[unction]] [-p[lot] [-stack]] [-v[erbose]] ApproxAdderSpec 16:32 8
+
+    Passing both the -p and -stack arguments enables outputting stacked plots 
+    for multiple runs of a test, implicitly enabled by passing a range-type 
+    argument. For example, the following executes the 'ApproxAdderSpec' test 
+    three times and stacks the outputs:
+    >>> ./emixa.py -p -stack ApproxAdderSpec 32 8:16:4
     """
     # Capture any potential arguments to the tests
     kvargmap = {}
