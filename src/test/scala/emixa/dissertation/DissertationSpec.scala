@@ -132,7 +132,7 @@ private class R4MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
 private class WrappedAdaptiveR2M(aWidth: Int, bWidth: Int,
   approxWidth: Int, numModes: Int, mode: Int) extends Multiplier(aWidth, bWidth) {
   val ar2m = Module(
-    new AdaptiveRadix2Multiplier(aWidth, bWidth, approxWidth, numModes=numModes)
+    new AdaptiveRadix2Multiplier(aWidth, bWidth, approxWidth, comp=true, numModes=numModes)
   )
   ar2m.io.ctrl := mode.U
   ar2m.io.a    := io.a
