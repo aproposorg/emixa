@@ -137,12 +137,13 @@ def stack_exhaustive(chars: list) -> list:
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
         fig, ax = plt.subplots(figsize=_config['figsize_stack'])
         nbins = 1 << opwdth if opwdth <= 6 else 64
-        for char, name in zip(chars, modnames):
-            data = [v for v in np.array(char.data).reshape(-1) if v != 0]
+        datas = list(zip([[v for v in np.array(char.data).reshape(-1) if v != 0] for char in chars], modnames))
+        datas.sort(reverse=True, key=lambda p: np.max(np.abs(p[0])))
+        for i, (data, name) in enumerate(datas):
             counts, bins = np.histogram(data, nbins)
             counts = counts / counts.sum()
             width = .8 * (np.max(bins) - np.min(bins)) / nbins
-            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name)
+            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name, zorder=i+1)
         ax.set_xlabel('Error magnitude')
         ax.set_ylim(0)
         ax.set_ylabel('Relative frequency')
@@ -259,14 +260,19 @@ def stack_random2d(chars: list) -> list:
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
         fig, ax = plt.subplots(figsize=_config['figsize_stack'])
         nbins = 1 << opwdth if opwdth <= 6 else 64
-        for char, name in zip(chars, modnames):
+        datas = []
+        for char in chars:
             data = []
             for res in char.data.keys():
                 data.extend([v for v in char.data[res] if v != 0])
+            datas.append(data)
+        datas = list(zip(datas, modnames))
+        datas.sort(reverse=True, key=lambda p: np.max(np.abs(p[0])))
+        for i, (data, name) in enumerate(datas):
             counts, bins = np.histogram(data, nbins)
             counts = counts / counts.sum()
             width = .8 * (np.max(bins) - np.min(bins)) / nbins
-            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name)
+            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name, zorder=i+1)
         ax.set_xlabel('Error magnitude')
         ax.set_ylim(0)
         ax.set_ylabel('Relative frequency')

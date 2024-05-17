@@ -4,12 +4,10 @@ import chiseltest.{ChiselScalatestTester, VerilatorBackendAnnotation, WriteVcdAn
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.{DataOutputStream, FileOutputStream, File}
-import java.nio.file.{Files, Paths}
 
 import sys.process._
 
 import scala.io.AnsiColor.{YELLOW, RED, RESET}
-import scala.util.{Either, Left, Right}
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.{universe => ru}
@@ -162,7 +160,8 @@ package object emixa {
     private[emixa] val symAnnos = if ("which verilator".! == 0) Seq(VerilatorBackendAnnotation, WriteVcdAnnotation) else Seq(WriteVcdAnnotation)
 
     /** Create folders to result file path */
-    Files.createDirectories(Paths.get(path))
+    (new File(path)).mkdirs()
+    // Files.createDirectories(Paths.get(path))
 
     /** Some tricky overriding to get access to the config map via
      * the ChiselScalatestTester trait
@@ -200,7 +199,6 @@ package object emixa {
       val os = new DataOutputStream(new FileOutputStream(new File(s"$path/errors.bin")))
       params.foreach(param => os.writeInt(param))
       results.foreach(res => os.writeLong(res.longValue))
-      os.flush()
       os.close()
     }
 
@@ -216,7 +214,6 @@ package object emixa {
         os.writeInt(ls.size)
         ls.foreach(rs => os.writeLong(rs.longValue))
       }
-      os.flush()
       os.close()
     }
 
@@ -232,7 +229,6 @@ package object emixa {
         os.writeLong(b.longValue)
         os.writeLong(res.longValue)
       }
-      os.flush()
       os.close()
     }
   }
