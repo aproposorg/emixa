@@ -2,11 +2,10 @@
 import numpy as np
 from matplotlib import pyplot as plt, rc_context
 from .characterization import ExhaustiveChar, Random2dChar, Random3dChar
-from .util import _warning, _error
+from .util import _info, _warning, _error
 
 _config = {
     'figsize': (5, 3),
-    'figsize_stack': (8, 3),
     'format' : 'pdf',
     'dpi'    : 300,
     'bbox_inches': 'tight',
@@ -60,7 +59,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # PLOT 1: Mean error per result
         path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         keys = list(resdict.keys())
         data = [np.mean(resdict[k]) for k in keys]
         ax.bar(keys, data, zorder=4, width=1)
@@ -74,7 +73,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # PLOT 2: Mean relative error per result
         path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         keys = [k for k in keys if k != 0]
         data = [geomean(np.abs(np.array(resdict[k]) / k)) for k in keys]
         ax.bar(keys, data, zorder=4, width=1)
@@ -90,7 +89,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
         # Filter the non-zero errors
         path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
         data = [v for v in np.array(char.data).reshape(-1) if v != 0]
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
@@ -133,22 +132,70 @@ def stack_exhaustive(chars: list) -> list:
         opwdth = np.max([char.width for char in chars])
 
         # PLOT 1: Histogram of error magnitudes
-        # Filter the non-zero errors
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize_stack'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        sax = ax.twinx()
         nbins = 1 << opwdth if opwdth <= 6 else 64
+
+        # Filter the non-zero errors (and sort with names to inform the user)
         datas = list(zip([[v for v in np.array(char.data).reshape(-1) if v != 0] for char in chars], modnames))
         datas.sort(reverse=True, key=lambda p: np.max(np.abs(p[0])))
-        for i, (data, name) in enumerate(datas):
-            counts, bins = np.histogram(data, nbins)
-            counts = counts / counts.sum()
-            width = .8 * (np.max(bins) - np.min(bins)) / nbins
-            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name, zorder=i+1)
+        modnames = [p[1] for p in datas]
+        datas    = [p[0] for p in datas]
+
+        # Compute the histogram data on a set of shared bins
+        _, bins = np.histogram(datas[0], nbins)
+        width   = .8 * (np.max(bins) - np.min(bins)) / nbins
+        counts  = []
+        for data in datas:
+            cnts, _ = np.histogram(data, bins)
+            cnts = cnts / cnts.sum()
+            counts.append(cnts)
+
+        # Find the y-axis limits
+        maxs  = [np.max(cnts) for cnts in counts]
+        y_max = (np.max(maxs) + np.min(maxs)) / 2 if np.max(maxs) > 2 * np.min(maxs) else None
+
+        # Plot the individual histograms
+        print(f'{_info} Plotted stacked histograms in order:')
+        rect_contnrs = []
+        for i, cnts in enumerate(counts[::-1]):
+            rects = ax.bar((bins[:-1] + bins[1:]) / 2, cnts, align='center', width=width, zorder=2*i)
+            rect_contnrs.append(rects)
+            color = ", ".join([f"{c:.3f}" for c in rects.patches[0].get_facecolor()])
+            print(f'{_info} - {modnames[::-1][i]} (color: ({color}))')
+        label_align = 'left'
+        for rects in rect_contnrs:
+            # Get y-axis height to calculate label position from
+            y_top = y_max if y_max is not None else ax.get_ylim()[1]
+
+            # Add a label to all bars that exceed the y-axis limits
+            for rect in rects:
+                height = rect.get_height()
+                if height > y_top:
+                    label_y = y_top * .95
+                    label_x = rect.get_x() + rect.get_width() * (-.75 if label_align == 'right' else 1.75)
+                    label_color = rect.get_facecolor()
+                    ax.text(label_x, label_y, f'{height:.2f}',
+                            ha=label_align, va='center', color=label_color)
+                    label_align = 'right' if label_align == 'left' else 'left'
+
+        # Plot the total cumulative distribution
+        sumcnts = np.array(counts[0])
+        for cnts in counts[1:]:
+            sumcnts += np.array(cnts)
+        sumcnts = sumcnts / len(counts)
+        sax.plot(bins[:-1], np.cumsum(sumcnts), color='r')
         ax.set_xlabel('Error magnitude')
-        ax.set_ylim(0)
+        if y_max is not None:
+            ax.set_ylim(0, y_max)
+        else:
+            ax.set_ylim(0)
         ax.set_ylabel('Relative frequency')
+        sax.set_ylim(0, 1)
+        sax.set_ylabel('Cumulative frequency')
+        sax.tick_params(axis='y', colors='r')
         ax.grid(_config['grid'])
-        ax.legend(loc='center left', bbox_to_anchor=(1.03, .5))
         fig.tight_layout()
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
         plotpaths.append(path)
@@ -179,7 +226,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
         # PLOT 1: Mean error per result
         path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         keys = list(char.data.keys())
         data = [np.mean(char.data[k]) for k in keys]
         keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
@@ -194,7 +241,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
         # PLOT 2: Mean relative error per result
         path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         keys = [k for k in char.data.keys() if k != 0]
         data = [geomean(np.abs(np.array(char.data[k]) / k)) for k in keys]
         keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
@@ -213,7 +260,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
         data = []
         for res in char.data.keys():
             data.extend([v for v in char.data[res] if v != 0])
-        fig, ax = plt.subplots(figsize=_config['figsize'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
@@ -256,10 +303,12 @@ def stack_random2d(chars: list) -> list:
         opwdth = np.max([char.width for char in chars])
 
         # PLOT 1: Histogram of error magnitudes
-        # Filter the non-zero errors
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize_stack'])
+        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        sax = ax.twinx()
         nbins = 1 << opwdth if opwdth <= 6 else 64
+
+        # Filter the non-zero errors
         datas = []
         for char in chars:
             data = []
@@ -268,16 +317,62 @@ def stack_random2d(chars: list) -> list:
             datas.append(data)
         datas = list(zip(datas, modnames))
         datas.sort(reverse=True, key=lambda p: np.max(np.abs(p[0])))
-        for i, (data, name) in enumerate(datas):
-            counts, bins = np.histogram(data, nbins)
-            counts = counts / counts.sum()
-            width = .8 * (np.max(bins) - np.min(bins)) / nbins
-            ax.bar((bins[:-1] + bins[1:]) / 2, counts, align='center', width=width, label=name, zorder=i+1)
+        modnames = [p[1] for p in datas]
+        datas    = [p[0] for p in datas]
+
+        # Compute the histogram data on a set of shared bins
+        _, bins = np.histogram(datas[0], nbins)
+        width   = .8 * (np.max(bins) - np.min(bins)) / nbins
+        counts  = []
+        for data in datas:
+            cnts, _ = np.histogram(data, bins)
+            cnts = cnts / cnts.sum()
+            counts.append(cnts)
+
+        # Find the y-axis limits
+        maxs = [np.max(cnts) for cnts in counts]
+        y_max = (np.max(maxs) + np.min(maxs)) / 2 if np.max(maxs) > 2 * np.min(maxs) else None
+
+        # Plot the individual histograms
+        print(f'{_info} Plotted stacked histograms in order:')
+        rect_contnrs = []
+        for i, cnts in enumerate(counts[::-1]):
+            rects = ax.bar((bins[:-1] + bins[1:]) / 2, cnts, align='center', width=width, zorder=2*i)
+            rect_contnrs.append(rects)
+            color = ", ".join([f"{c:.3f}" for c in rects.patches[0].get_facecolor()])
+            print(f'{_info} - {modnames[::-1][i]} (color: ({color}))')
+        label_align = 'left'
+        for rects in rect_contnrs:
+            # Get y-axis height to calculate label position from
+            y_top = y_max if y_max is not None else ax.get_ylim()[1]
+
+            # Add a label to all bars that exceed the y-axis limits
+            for rect in rects:
+                height = rect.get_height()
+                if height > y_top:
+                    label_y = y_top * .95
+                    label_x = rect.get_x() + rect.get_width() * (-.75 if label_align == 'right' else 1.75)
+                    label_color = rect.get_facecolor()
+                    ax.text(label_x, label_y, f'{height:.2f}',
+                            ha=label_align, va='center', color=label_color)
+                    label_align = 'right' if label_align == 'left' else 'left'
+
+        # Plot the total cumulative distribution
+        sumcnts = np.array(counts[0])
+        for cnts in counts[1:]:
+            sumcnts += np.array(cnts)
+        sumcnts = sumcnts / len(counts)
+        sax.plot(bins[:-1], np.cumsum(sumcnts), color='r')
         ax.set_xlabel('Error magnitude')
-        ax.set_ylim(0)
+        if y_max is not None:
+            ax.set_ylim(0, y_max)
+        else:
+            ax.set_ylim(0)
         ax.set_ylabel('Relative frequency')
+        sax.set_ylim(0, 1)
+        sax.set_ylabel('Cumulative frequency')
+        sax.tick_params(axis='y', colors='r')
         ax.grid(_config['grid'])
-        ax.legend(loc='center left', bbox_to_anchor=(1.03, .5))
         fig.tight_layout()
         fig.savefig(path, dpi=_config['dpi'], bbox_inches=_config['bbox_inches'])
         plotpaths.append(path)
@@ -329,7 +424,7 @@ def visualize_random3d(char: Random3dChar, diffparams: list = []) -> list:
         lbls.append('')
 
         # Plot the results
-        fig = plt.figure(figsize=(5, 5))
+        fig = plt.figure(figsize=(5, 5), num=1, clear=True)
         ax  = fig.add_subplot(111, projection='3d')
         _x  = _y = np.arange(dmns)
         _xx, _yy = np.meshgrid(_x, _y)
@@ -366,33 +461,12 @@ def visualize(chars: list, kvargmap: dict) -> list:
     numdiffs = [len(set([char.params[i] for char in chars])) for i in range(len(chars[0].params))]
     diffind  = [i for i, arg in enumerate(numdiffs) if arg != 1]
 
-    # Process the characterization outputs one at a time
-    paths = []
-    for char in chars:
-        # Skip the broken configurations
-        if char is None:
-            continue
-
-        # Use the predetermined indices to extract the changing parameters
-        diffparams = [char.params[i] for i in diffind]
-
-        # Process the data differently depending on its type
-        if isinstance(char, ExhaustiveChar):
-            plotpaths = visualize_exhaustive(char, diffparams)
-        elif isinstance(char, Random2dChar):
-            plotpaths = visualize_random2d(char, diffparams)
-        elif isinstance(char, Random3dChar):
-            plotpaths = visualize_random3d(char, diffparams)
-
-        # Don't keep the broken configurations
-        if plotpaths is not None:
-            paths.extend(plotpaths)
+    # Filter the broken configurations
+    fltrd_chars = [char for char in chars if char is not None]
 
     # Process the plots together if requested
+    paths = []
     if 'stack' in kvargmap:
-        # Filter the broken configurations
-        fltrd_chars = [char for char in chars if char is not None]
-
         # Process the data into one plot depending on its type
         if len(fltrd_chars) > 1:
             head = fltrd_chars[0]
@@ -405,6 +479,24 @@ def visualize(chars: list, kvargmap: dict) -> list:
                 plotpaths = None
 
             # Don't add paths for broken configurations
+            if plotpaths is not None:
+                paths.extend(plotpaths)
+
+    # Otherwise, process them separately
+    else:
+        for char in fltrd_chars:
+            # Use the predetermined indices to extract the changing parameters
+            diffparams = [char.params[i] for i in diffind]
+
+            # Process the data differently depending on its type
+            if isinstance(char, ExhaustiveChar):
+                plotpaths = visualize_exhaustive(char, diffparams)
+            elif isinstance(char, Random2dChar):
+                plotpaths = visualize_random2d(char, diffparams)
+            elif isinstance(char, Random3dChar):
+                plotpaths = visualize_random3d(char, diffparams)
+
+            # Don't keep the broken configurations
             if plotpaths is not None:
                 paths.extend(plotpaths)
 
