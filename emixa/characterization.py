@@ -305,14 +305,13 @@ def position_args(name: str, args: list) -> Tuple[list, list]:
     # Run the SBT command to capture the help message
     sbt_res = subprocess.run(['sbt', test_cmd, 'exit'], capture_output=True, text=True).stdout
 
-    # Analyze the output to determine the argument names, if any
+    # Analyze the output to determine the argument names and default values, if any
     if not val_sbt_exists(name, sbt_res) or not val_sbt_executed(name, sbt_res):
         return None
-    lines = list(filter(lambda l: _info in l, sbt_res.split('\n')))[1:]
+    lines = list(filter(lambda l: _error in l, sbt_res.split('\n')))[1:]
     paramnames = list(map(lambda l: l.split(' ')[2], lines))
-    if len(args) < len(paramnames):
-        print(f'{_error} Missing arguments for characterizer {name}: Expected {len(paramnames)}, got {len(args)}')
-        return None
+    deflines = list(filter(lambda l: '(got' in l, lines))
+    defargs  = {splt[2] : splt[-1][:-1] for splt in [l.split(' ') for l in deflines]}
 
     # Extract the named arguments passed and validate them
     namedargs = [arg.split('=') for arg in args if '=' in arg]
@@ -345,18 +344,21 @@ def position_args(name: str, args: list) -> Tuple[list, list]:
 
     # Extract the positional arguments passed and inform about additional ones
     posargs = [arg for arg in args if '=' not in arg]
-    num_add_args = len(namedargs) + len(posargs) - len(paramnames)
-    if num_add_args != 0:
-        warns = '\n'.join([f'{_warning} - {arg}' for arg in posargs[len(posargs)-num_add_args:]])
-        print(f'{_warning} Got {num_add_args} additional arguments for characterizer {name}:\n{warns}')
-    params = []
-    offset = 0
+    params  = []
+    offset  = 0
     for prmname in paramnames:
         if prmname in namedargs:
             params.append(namedargs[prmname])
-        else:
+        elif offset < len(posargs):
             params.append(posargs[offset])
             offset += 1
+        elif prmname in defargs:
+            params.append(defargs[prmname])
+        else:
+            expected = '\n'.join([f'{_error} {" ".join(l.split(" ")[1:])}' for l in lines])
+            print(f'{_error} Missing argument {prmname} for characterizer {name}')
+            print(f'{_error} Expected arguments:\n{expected}')
+            return None
 
     return params, paramnames
 

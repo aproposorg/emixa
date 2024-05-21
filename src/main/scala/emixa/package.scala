@@ -10,7 +10,7 @@ import sys.process._
 import scala.io.AnsiColor.{YELLOW, RED, RESET}
 
 import scala.reflect.ClassTag
-import scala.reflect.runtime.{universe => ru}
+import scala.reflect.runtime.{currentMirror => cm, universe => ru}
 
 /** Common, reusable test patterns for error characterization of inexact
  * adders and multipliers within the emixa framework
@@ -29,7 +29,7 @@ package object emixa {
   private[emixa] def getTypeTag[T](implicit tt: ru.TypeTag[T]) = tt
 
   /** Get the name and type information about a runtime class'
-   * first constructor
+   * primary constructor
    */
   private[emixa] def info[T : ru.TypeTag] = {
     val ctor = ru.typeOf[T].decl(ru.termNames.CONSTRUCTOR).asMethod
@@ -43,37 +43,114 @@ package object emixa {
     args
   }
 
-  /** Produce a helper string about a runtime class' first constructor */
+  /** Get a map of optional default parameters for a runtime class'
+   * primary constructor
+   */
+  def defParamMap[T : ru.TypeTag]: Map[Int, Option[Any]] = {
+    // Extract the primary constructor and use its parameter list 
+    // for constructing the resulting map
+    val primCtor = ru.typeOf[T]
+      .decl(ru.termNames.CONSTRUCTOR)
+      .asMethod
+    val allAddDefs = primCtor.paramLists
+      .drop(1)
+      .flatten
+      .forall(_.asTerm.isParamWithDefault)
+    if (primCtor.paramLists.size > 1 && !allAddDefs) {
+      print(s"[ERROR] Cannot runtime instantiate classes with multiple parameter ")
+      println("lists without default arguments in all additional parameter lists")
+      throw new IllegalArgumentException("multiple parameter lists")
+    }
+
+    // If the constructor has no default parameters, do not attempt 
+    // to find its companion object
+    if (!primCtor.paramLists.head.exists(_.asTerm.isParamWithDefault)) {
+      (0 until primCtor.paramLists.head.size).map(_ -> None).toMap
+    } else {
+      // Get the companion object, which houses the default value methods
+      val clsCompMod = ru.typeOf[T]
+        .typeSymbol
+        .asClass
+        .companion
+        .asModule
+      val instMirr = cm.reflectModule(clsCompMod).instance
+
+      // Use the primary constructor's parameter list for building the map
+      primCtor.paramLists.head.zipWithIndex.map { case (param, ind) =>
+        // If the parameter has no default value, no need to search for 
+        // its default value method
+        if (!param.asTerm.isParamWithDefault) {
+          (ind -> None)
+        } else {
+          val mthd = clsCompMod.typeSignature
+            .member(ru.TermName(s"$$lessinit$$greater$$default$$${ind+1}"))
+            .asMethod
+          val prm = cm.reflect(instMirr).reflectMethod(mthd)()
+          (ind -> Some(prm))
+        }
+      }.toMap
+    }
+  }
+
+  /** Produce a helper string about a runtime class' primary constructor */
   private[emixa] def help[T : ru.TypeTag] = {
-    val const = info[T]
-    val name  = ru.typeOf[T].toString.split('.').last
-    val llen  = const.map(_._1.size).max
-    val res = s"""${_info} ${name} takes ${const.size} arguments:
-                 |${const.map { case (nme, tpe) => s"${_info} - ${nme.padTo(llen, ' ')} : $tpe" }.mkString("\n")}""".stripMargin
-    res
+    // Gather some information about the constructur
+    val const  = info[T]
+    val params = defParamMap[T]
+    val name   = ru.typeOf[T].toString.split('.').last
+    val llen   = const.map(_._1.size).max
+
+    // Now build the resulting string
+    val bs = new StringBuilder(s"${_info} $name takes ${const.size} arguments:")
+    const.zipWithIndex.foreach { case ((nme, tpe), ind) =>
+      val default = params(ind) match {
+        case Some(value) => s"(defaults to $value)"
+        case _ => ""
+      }
+      bs.append(s"\n${_info} - ${nme.padTo(llen, ' ')} : $tpe $default")
+    }
+    bs.mkString
   }
 
   /** Parse a map of named arguments into the type specified
-   * by a runtime class' first constructor
+   * by a runtime class' primary constructor
    */
   private[emixa] def parseArgMap[T : ru.TypeTag](args: Map[String, String]) = {
     val const = info[T]
-    if (args.size < const.size) {
+
+    // Build a complete map of arguments, giving precedence to those passed 
+    // via the command line
+    val params = {
+      val defArgs = defParamMap[T]
+      val nmdDefArgs = const.zipWithIndex
+        .map { case ((nme, _), ind) =>
+          defArgs(ind) match {
+            case Some(value) => (nme -> Some(value.toString()))
+            case _ => (nme -> None)
+          }
+        }.toMap
+      nmdDefArgs ++ args.map { case (k, v) => (k -> Some(v)) }
+    }
+
+    // Ensure these arguments cover the constructor
+    if (params.filter(_._2 == None).nonEmpty) {
       val name = ru.typeOf[T].toString.split('.').last
-      println(s"${_error} Missing arguments for constructor of ${name}: Expected ${const.size}, got ${args.size}. Use:")
-      println(help[T])
+      val llen = const.map(_._1.size).max
+      val bs = new StringBuilder(s"${_error} Missing arguments for $name:")
+      const.foreach { case (nme, tpe) =>
+        val arg = params(nme) match {
+          case Some(value) => s"(got $value)"
+          case _ => "(missing)"
+        }
+        bs.append(s"\n${_error} - ${nme.padTo(llen, ' ')} : $tpe $arg")
+      }
+      println(bs.mkString)
       throw new IllegalArgumentException("arguments missing for test")
     }
-    const.map(_._1)
-      .filterNot(args.contains(_))
-      .foreach { argName =>
-        val name = ru.typeOf[T].toString.split('.').last
-        println(s"${_error} Missing argument ${argName} for constructor of ${name}. Use:")
-        println(help[T])
-        throw new IllegalArgumentException("arguments missing for test")
-      }
-    const.map { case (name, tpe) =>
-      val arg  = args(name)
+
+    // Convert and package the arguments properly
+    const.map { case (nme, tpe) =>
+      val arg  = params(nme).get // safe since check above passed
       val conv = tpe match {
         case bte  if bte  =:= ru.typeOf[Byte]    => arg.toByteOption.map(Byte.box(_))
         case shrt if shrt =:= ru.typeOf[Short]   => arg.toShortOption.map(Short.box(_))
@@ -88,7 +165,7 @@ package object emixa {
       }
       conv match {
         case None =>
-          println(s"${_error} Cannot parse argument \"$arg\" into type $tpe. Use:")
+          println(s"${_error} Cannot parse argument \"$nme=$arg\" into type $tpe. Use:")
           println(help[T])
           throw new IllegalArgumentException("invalid argument passed to test")
         case _ => conv.get

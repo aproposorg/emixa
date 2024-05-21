@@ -2,8 +2,8 @@
 import re
 
 _info    = '[emixa-info]'
-_warning = '[\033[1;33memixa-warning\033[0;0m]'
-_error   = '[\033[1;31memixa-error\033[0;0m]'
+_warning = '[\x1b[33memixa-warning\x1b[0m]'
+_error   = '[\x1b[31memixa-error\x1b[0m]'
 
 def relabel(string: str) -> str:
     """

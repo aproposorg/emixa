@@ -14,7 +14,7 @@ class GeArSpec extends AdderCharacterizer {
   characterize[WrappedGeAr]()
 }
 
-private class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int) extends Adder(width) {
+private class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int = 0) extends Adder(width) {
   val gear = Module(new GeAr(width, subAddWidth, specWidth))
   gear.io.a    := io.a
   gear.io.b    := io.b
