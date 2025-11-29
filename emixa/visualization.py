@@ -59,7 +59,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # PLOT 1: Mean error per result
         path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         keys = list(resdict.keys())
         data = [np.mean(resdict[k]) for k in keys]
         ax.bar(keys, data, zorder=4, width=1)
@@ -73,7 +73,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
 
         # PLOT 2: Mean relative error per result
         path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         keys = [k for k in keys if k != 0]
         data = [geomean(np.abs(np.array(resdict[k]) / k)) for k in keys]
         ax.bar(keys, data, zorder=4, width=1)
@@ -89,7 +89,7 @@ def visualize_exhaustive(char: ExhaustiveChar, diffparams: list = []) -> list:
         # Filter the non-zero errors
         path = f'./output/{char.name}/hist_{modname}.{_config["format"]}'
         data = [v for v in np.array(char.data).reshape(-1) if v != 0]
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
@@ -133,7 +133,7 @@ def stack_exhaustive(chars: list) -> list:
 
         # PLOT 1: Histogram of error magnitudes
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         sax = ax.twinx()
         nbins = 1 << opwdth if opwdth <= 6 else 64
 
@@ -226,7 +226,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
         # PLOT 1: Mean error per result
         path = f'./output/{char.name}/mepr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         keys = list(char.data.keys())
         data = [np.mean(char.data[k]) for k in keys]
         keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
@@ -241,7 +241,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
 
         # PLOT 2: Mean relative error per result
         path = f'./output/{char.name}/mredpr_{modname}.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         keys = [k for k in char.data.keys() if k != 0]
         data = [geomean(np.abs(np.array(char.data[k]) / k)) for k in keys]
         keys = [k if k < 2**(reswdth-1) else k - 2**reswdth for k in keys]
@@ -260,7 +260,7 @@ def visualize_random2d(char: Random2dChar, diffparams: list = []) -> list:
         data = []
         for res in char.data.keys():
             data.extend([v for v in char.data[res] if v != 0])
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         nbins = 1 << opwdth if opwdth <= 6 else 64
         counts, bins = np.histogram(data, nbins)
         counts = counts / counts.sum()
@@ -304,7 +304,7 @@ def stack_random2d(chars: list) -> list:
 
         # PLOT 1: Histogram of error magnitudes
         path = f'./output/{chars[0].name}/hist_{chars[0].module}_stack.{_config["format"]}'
-        fig, ax = plt.subplots(figsize=_config['figsize'], num=1, clear=True)
+        fig, ax = plt.subplots(figsize=_config['figsize'], clear=True)
         sax = ax.twinx()
         nbins = 1 << opwdth if opwdth <= 6 else 64
 

@@ -4,15 +4,18 @@ import Characterization._
 import Signedness._
 
 import chisel3._
-import chiseltest._
 import chisel3.util.log2Up
 
 import scala.collection.mutable
 
+import scala.reflect.ClassTag
+import scala.reflect.runtime.{currentMirror => cm, universe => ru}
+
 import approx.addition.Adder
 
-abstract class AdderCharacterizer extends Characterizer {
-  private[emixa] def _characterize[T <: Module](mod: T): Unit = mod match {
+abstract class AdderCharacterizer[U <: Module](implicit ct: ClassTag[U], tt: ru.TypeTag[U])
+  extends Characterizer[U] {
+  private[emixa] def _characterize(mod: U): Unit = mod match {
     case adder: Adder =>
       chartype match {
         case Exhaustive => _charExhaustive(adder)

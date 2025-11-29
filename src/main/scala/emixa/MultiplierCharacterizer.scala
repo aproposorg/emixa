@@ -4,15 +4,18 @@ import Characterization._
 import Signedness._
 
 import chisel3._
-import chiseltest._
 import chisel3.util.log2Up
 
 import scala.collection.mutable
 
+import scala.reflect.ClassTag
+import scala.reflect.runtime.{currentMirror => cm, universe => ru}
+
 import approx.multiplication.Multiplier
 
-abstract class MultiplierCharacterizer extends Characterizer {
-  private[emixa] def _characterize[T <: Module](mod: T): Unit = mod match {
+abstract class MultiplierCharacterizer[U <: Module](implicit ct: ClassTag[U], tt: ru.TypeTag[U])
+  extends Characterizer[U] {
+  private[emixa] def _characterize(mod: U): Unit = mod match {
     case mult: Multiplier =>
       chartype match {
         case Exhaustive => _charExhaustive(mult)

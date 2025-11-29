@@ -9,19 +9,19 @@ import emixa.AdderCharacterizer
 import emixa.Signedness.Signed
 import emixa.Characterization.Random2D
 
-class LOASpec extends AdderCharacterizer {
+class LOASpec extends AdderCharacterizer[BlackboxLOA] {
   val sgn = Signed
   val chartype = Random2D
 
-  characterize[BlackboxLOA]()
+  characterize()
 }
 
-private class BlackboxLOA(width: Int, approxWidth: Int) extends Adder(width) {
+class BlackboxLOA(width: Int, approxWidth: Int) extends Adder(width) {
   val rca = Module(new VLOA(width, approxWidth))
   io <> rca.io
 }
 
-private class VLOA(val width: Int, val approxWidth: Int)
+class VLOA(val width: Int, val approxWidth: Int)
   extends BlackBox(Map("width" -> IntParam(width), "approxWidth" -> IntParam(approxWidth)))
   with HasBlackBoxResource {
   require(approxWidth <= width)

@@ -15,33 +15,37 @@ import emixa.{AdderCharacterizer, MultiplierCharacterizer}
 import emixa.Signedness._
 import emixa.Characterization.Random2D
 
+import scala.reflect.ClassTag
+import scala.reflect.runtime.{currentMirror => cm, universe => ru}
+
 /** 
  * Inexact adders
  */
 
-class DissertationAdderSpec extends AdderCharacterizer {
+class DissertationAdderSpec[U <: Module](implicit ct: ClassTag[U], tt: ru.TypeTag[U])
+  extends AdderCharacterizer[U] {
   val sgn = Signed
   val chartype = Random2D
 }
 
-class OFLOCASpec extends DissertationAdderSpec {
-  characterize[OFLOCA]()
+class OFLOCASpec extends DissertationAdderSpec[OFLOCA] {
+  characterize()
 }
-class LSESA1Spec extends DissertationAdderSpec {
-  characterize[LSESA1]()
+class LSESA1Spec extends DissertationAdderSpec[LSESA1] {
+  characterize()
 }
-class GeArSpec extends DissertationAdderSpec {
-  characterize[WrappedGeAr]()
+class GeArSpec extends DissertationAdderSpec[WrappedGeAr] {
+  characterize()
 }
-class SklanskyAxPPASpec extends DissertationAdderSpec {
-  characterize[SklanskyAxPPA]()
-}
-
-class AdaptiveOFLOCASpec extends DissertationAdderSpec {
-  characterize[WrappedAdaptiveOFLOCA]()
+class SklanskyAxPPASpec extends DissertationAdderSpec[SklanskyAxPPA] {
+  characterize()
 }
 
-private class LSESA1(width: Int, approxWidth: Int) extends Adder(width) {
+class AdaptiveOFLOCASpec extends DissertationAdderSpec[WrappedAdaptiveOFLOCA] {
+  characterize()
+}
+
+class LSESA1(width: Int, approxWidth: Int) extends Adder(width) {
   val sums = Wire(Vec(width, Bool()))
   val cins = Wire(Vec(width + 1, Bool()))
   cins(0) := io.cin
@@ -71,7 +75,7 @@ private class LSESA1(width: Int, approxWidth: Int) extends Adder(width) {
   io.cout := cins(width)
 }
 
-private class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int)
+class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int)
   extends Adder(width) {
   val gear = Module(new GeAr(width, subAddWidth, specWidth))
   gear.io.a    := io.a
@@ -82,7 +86,7 @@ private class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int)
   io.cout := gear.io.cout
 }
 
-private class WrappedAdaptiveOFLOCA(width: Int, approxWidth: Int, numModes: Int, mode: Int)
+class WrappedAdaptiveOFLOCA(width: Int, approxWidth: Int, numModes: Int, mode: Int)
   extends Adder(width) {
   val aofloca = Module(new AdaptiveOFLOCA(width, approxWidth, numModes))
   aofloca.io.ctrl := mode.U
@@ -97,23 +101,24 @@ private class WrappedAdaptiveOFLOCA(width: Int, approxWidth: Int, numModes: Int,
  * Inexact multipliers
  */
 
-class DissertationMultiplierSpec extends MultiplierCharacterizer {
+class DissertationMultiplierSpec[U <: Module](implicit ct: ClassTag[U], tt: ru.TypeTag[U])
+  extends MultiplierCharacterizer[U] {
   val sgn = Unsigned
   val chartype = Random2D
 }
 
-class R2MORCompSpec extends DissertationMultiplierSpec {
-  characterize[R2MORComp]()
+class R2MORCompSpec extends DissertationMultiplierSpec[R2MORComp] {
+  characterize()
 }
-class R4MORCompSpec extends DissertationMultiplierSpec {
-  characterize[R4MORComp]()
-}
-
-class AdaptiveR2MSpec extends DissertationMultiplierSpec {
-  characterize[WrappedAdaptiveR2M]()
+class R4MORCompSpec extends DissertationMultiplierSpec[R4MORComp] {
+  characterize()
 }
 
-private class R2MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
+class AdaptiveR2MSpec extends DissertationMultiplierSpec[WrappedAdaptiveR2M] {
+  characterize()
+}
+
+class R2MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
   extends Multiplier(aWidth, bWidth) {
   val r2m = Module(
     new Radix2Multiplier(aWidth, bWidth, comp=true, approx=Seq(ORCompression(approxWidth)))
@@ -121,7 +126,7 @@ private class R2MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
   io <> r2m.io
 }
 
-private class R4MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
+class R4MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
   extends Multiplier(aWidth, bWidth) {
   val r4m = Module(
     new Radix4Multiplier(aWidth, bWidth, comp=true, approx=Seq(ORCompression(approxWidth)))
@@ -129,7 +134,7 @@ private class R4MORComp(aWidth: Int, bWidth: Int, approxWidth: Int)
   io <> r4m.io
 }
 
-private class WrappedAdaptiveR2M(aWidth: Int, bWidth: Int,
+class WrappedAdaptiveR2M(aWidth: Int, bWidth: Int,
   approxWidth: Int, numModes: Int, mode: Int) extends Multiplier(aWidth, bWidth) {
   val ar2m = Module(
     new AdaptiveRadix2Multiplier(aWidth, bWidth, approxWidth, comp=true, numModes=numModes)

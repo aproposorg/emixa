@@ -1,6 +1,8 @@
 
 import chisel3._
-import chiseltest.{ChiselScalatestTester, VerilatorBackendAnnotation, WriteVcdAnnotation}
+import chisel3.simulator.scalatest.ChiselSim
+import chisel3.simulator.scalatest.HasCliOptions.CliOption
+
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.{DataOutputStream, FileOutputStream, File}
@@ -8,6 +10,7 @@ import java.io.{DataOutputStream, FileOutputStream, File}
 import sys.process._
 
 import scala.io.AnsiColor.{YELLOW, RED, RESET}
+import scala.util.control.NoStackTrace
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.{currentMirror => cm, universe => ru}
@@ -24,9 +27,6 @@ package object emixa {
   private[emixa] val _info    =  "[emixa-info]"
   private[emixa] val _warning = s"[${YELLOW}emixa-warning${RESET}]"
   private[emixa] val _error   = s"[${RED}emixa-error${RESET}]"
-
-  /** Get the type tag of a runtime class by reflection */
-  private[emixa] def getTypeTag[T](implicit tt: ru.TypeTag[T]) = tt
 
   /** Get the name and type information about a runtime class'
    * primary constructor
@@ -112,67 +112,6 @@ package object emixa {
     bs.mkString
   }
 
-  /** Parse a map of named arguments into the type specified
-   * by a runtime class' primary constructor
-   */
-  private[emixa] def parseArgMap[T : ru.TypeTag](args: Map[String, String]) = {
-    val const = info[T]
-
-    // Build a complete map of arguments, giving precedence to those passed 
-    // via the command line
-    val params = {
-      val defArgs = defParamMap[T]
-      val nmdDefArgs = const.zipWithIndex
-        .map { case ((nme, _), ind) =>
-          defArgs(ind) match {
-            case Some(value) => (nme -> Some(value.toString()))
-            case _ => (nme -> None)
-          }
-        }.toMap
-      nmdDefArgs ++ args.map { case (k, v) => (k -> Some(v)) }
-    }
-
-    // Ensure these arguments cover the constructor
-    if (params.filter(_._2 == None).nonEmpty) {
-      val name = ru.typeOf[T].toString.split('.').last
-      val llen = const.map(_._1.size).max
-      val bs = new StringBuilder(s"${_error} Missing arguments for $name:")
-      const.foreach { case (nme, tpe) =>
-        val arg = params(nme) match {
-          case Some(value) => s"(got $value)"
-          case _ => "(missing)"
-        }
-        bs.append(s"\n${_error} - ${nme.padTo(llen, ' ')} : $tpe $arg")
-      }
-      println(bs.mkString)
-      throw new IllegalArgumentException("arguments missing for test")
-    }
-
-    // Convert and package the arguments properly
-    const.map { case (nme, tpe) =>
-      val arg  = params(nme).get // safe since check above passed
-      val conv = tpe match {
-        case bte  if bte  =:= ru.typeOf[Byte]    => arg.toByteOption.map(Byte.box(_))
-        case shrt if shrt =:= ru.typeOf[Short]   => arg.toShortOption.map(Short.box(_))
-        case int  if int  =:= ru.typeOf[Int]     => arg.toIntOption.map(Int.box(_))
-        case lng  if lng  =:= ru.typeOf[Long]    => arg.toLongOption.map(Long.box(_))
-        case bool if bool =:= ru.typeOf[Boolean] => arg.toBooleanOption.map(Boolean.box(_))
-        case flt  if flt  =:= ru.typeOf[Float]   => arg.toFloatOption.map(Float.box(_))
-        case dbl  if dbl  =:= ru.typeOf[Double]  => arg.toDoubleOption.map(Double.box(_))
-        case chr  if chr  =:= ru.typeOf[Char]    => arg.headOption.map(Char.box(_))
-        case str  if str  =:= ru.typeOf[String]  => Some(arg)
-        case _ => None
-      }
-      conv match {
-        case None =>
-          println(s"${_error} Cannot parse argument \"$nme=$arg\" into type $tpe. Use:")
-          println(help[T])
-          throw new IllegalArgumentException("invalid argument passed to test")
-        case _ => conv.get
-      }
-    }
-  }
-
   /** Instantiate an object of a runtime class with reflection */
   private[emixa] def instantiate[T](clazz: java.lang.Class[T])(args: AnyRef*): T = {
     return clazz.getConstructors().head.newInstance(args:_*).asInstanceOf[T]
@@ -224,47 +163,148 @@ package object emixa {
    * @note Permits passing command line arguments to a test but
    *       ignores any names they are assigned to (for now).
    */
-  private[emixa] abstract class Characterizer extends AnyFlatSpec with ChiselScalatestTester {
-    this: org.scalatest.TestSuite =>
+  private[emixa] abstract class Characterizer[U <: Module](implicit ct: ClassTag[U], tt: ru.TypeTag[U])
+    extends AnyFlatSpec with ChiselSim {
 
     def sgn: Signedness
     def chartype: Characterization
 
+    /** Configure command line parameters for this test */
+    emixa.info[U].foreach { case (nme, tpe) =>
+      tpe match {
+        case int  if int  =:= ru.typeOf[Int]     => addOption(CliOption.int(nme, ""))
+        case dbl  if dbl  =:= ru.typeOf[Double]  => addOption(CliOption.double(nme, ""))
+        case str  if str  =:= ru.typeOf[String]  => addOption(CliOption.string(nme, ""))
+        case bte  if bte  =:= ru.typeOf[Byte]    =>
+          addOption(CliOption.simple[Byte](nme, "", v => try { v.toByte } catch { case e: NumberFormatException =>
+            throw new java.lang.IllegalArgumentException(
+              s"Illegal value '$v' for option '$nme'.  The value must be convertible to a byte."
+            ) with NoStackTrace
+          }))
+        case shrt if shrt =:= ru.typeOf[Short]   =>
+          addOption(CliOption.simple[Short](nme, "", v => try { v.toShort } catch { case e: NumberFormatException =>
+            throw new java.lang.IllegalArgumentException(
+              s"Illegal value '$v' for option '$nme'.  The value must be convertible to a short."
+            ) with NoStackTrace
+          }))
+        case lng  if lng  =:= ru.typeOf[Long]    =>
+          addOption(CliOption.simple[Long](nme, "", v => try { v.toLong } catch { case e: NumberFormatException =>
+            throw new java.lang.IllegalArgumentException(
+              s"Illegal value '$v' for option '$nme'.  The value must be convertible to a long."
+            ) with NoStackTrace
+          }))
+        case bool if bool =:= ru.typeOf[Boolean] =>
+          addOption(CliOption.simple[Boolean](nme, "", v => try { v.toBoolean } catch { case e: IllegalArgumentException =>
+            throw new java.lang.IllegalArgumentException(
+              s"Illegal value '$v' for option '$nme'.  The value must be convertible to a boolean."
+            ) with NoStackTrace
+          }))
+        case flt  if flt  =:= ru.typeOf[Float]   =>
+          addOption(CliOption.simple[Float](nme, "", v => try { v.toFloat } catch { case e: NumberFormatException =>
+            throw new java.lang.IllegalArgumentException(
+              s"Illegal value '$v' for option '$nme'.  The value must be convertible to a float."
+            ) with NoStackTrace
+          }))
+        case _ =>
+          println(s"${_error} Cannot parse argument \"$nme\" of non-simple type $tpe. Use:")
+          println(help[U])
+          throw new IllegalArgumentException("invalid argument type in test")
+      }
+    }
+
+    /** Collect and extract command line parameters for this test */
+    private[emixa] def _parseArgs() = {
+      val const = emixa.info[U]
+      
+      val cmdArgs = const.map { case (nme, tpe) => // skip missing arguments
+        tpe match {
+          case int  if int  =:= ru.typeOf[Int]     => (nme -> getOption[Int]    (nme).map(_.toString))
+          case dbl  if dbl  =:= ru.typeOf[Double]  => (nme -> getOption[Double] (nme).map(_.toString))
+          case str  if str  =:= ru.typeOf[String]  => (nme -> getOption[String] (nme))
+          case bte  if bte  =:= ru.typeOf[Byte]    => (nme -> getOption[Byte]   (nme).map(_.toString))
+          case shrt if shrt =:= ru.typeOf[Short]   => (nme -> getOption[Short]  (nme).map(_.toString))
+          case lng  if lng  =:= ru.typeOf[Long]    => (nme -> getOption[Long]   (nme).map(_.toString))
+          case bool if bool =:= ru.typeOf[Boolean] => (nme -> getOption[Boolean](nme).map(_.toString))
+          case flt  if flt  =:= ru.typeOf[Float]   => (nme -> getOption[Float]  (nme).map(_.toString))
+          case _ => (nme -> None)
+        }
+      }
+      .filter(_._2 != None)
+      .toMap
+
+      // Build a complete map of arguments, giving precedence to those passed
+      // via the command line
+      val params = {
+        val defArgs = defParamMap[U]
+        val nmdDefArgs = const.zipWithIndex
+          .map { case ((nme, _), ind) =>
+            defArgs(ind) match {
+              case Some(value) => (nme -> Some(value.toString()))
+              case _ => (nme -> None)
+            }
+          }.toMap
+        nmdDefArgs ++ cmdArgs
+      }
+
+      // Ensure these arguments cover the constructor
+      if (params.filter(_._2 == None).nonEmpty) {
+        val name = ru.typeOf[U].toString.split('.').last
+        val llen = const.map(_._1.size).max
+        val bs = new StringBuilder(s"${_error} Missing arguments for $name:")
+        const.foreach { case (nme, tpe) =>
+          val arg = params(nme) match {
+            case Some(value) => s"(got $value)"
+            case _ => "(missing)"
+          }
+          bs.append(s"\n${_error} - ${nme.padTo(llen, ' ')} : $tpe $arg")
+        }
+        println(bs.mkString)
+        throw new IllegalArgumentException("arguments missing for test")
+      }
+
+      // Convert and package the arguments properly
+      const.map { case (nme, tpe) =>
+        val arg  = params(nme).get // safe since check above passed
+        val conv = tpe match {
+          case int  if int  =:= ru.typeOf[Int]     => arg.toIntOption    .map(Int.box(_))
+          case dbl  if dbl  =:= ru.typeOf[Double]  => arg.toDoubleOption .map(Double.box(_))
+          case str  if str  =:= ru.typeOf[String]  => Some(arg)
+          case bte  if bte  =:= ru.typeOf[Byte]    => arg.toByteOption   .map(Byte.box(_))
+          case shrt if shrt =:= ru.typeOf[Short]   => arg.toShortOption  .map(Short.box(_))
+          case lng  if lng  =:= ru.typeOf[Long]    => arg.toLongOption   .map(Long.box(_))
+          case bool if bool =:= ru.typeOf[Boolean] => arg.toBooleanOption.map(Boolean.box(_))
+          case flt  if flt  =:= ru.typeOf[Float]   => arg.toFloatOption  .map(Float.box(_))
+          case _ => None
+        }
+        conv match {
+          case None =>
+            println(s"${_error} Cannot parse argument \"$nme=$arg\" into type $tpe. Use:")
+            println(help[U])
+            throw new IllegalArgumentException("invalid argument passed to test")
+          case _ => conv.get
+        }
+      }
+    }
+
     /** Path to result files */
     private[emixa] val path = s"$ResultPath${this.getClass.getSimpleName}"
 
-    /** Check if Verilator is available for simulations */
-    private[emixa] val symAnnos = if ("which verilator".! == 0) Seq(VerilatorBackendAnnotation, WriteVcdAnnotation) else Seq(WriteVcdAnnotation)
-
     /** Create folders to result file path */
     (new File(path)).mkdirs()
-    // Files.createDirectories(Paths.get(path))
-
-    /** Some tricky overriding to get access to the config map via
-     * the ChiselScalatestTester trait
-     */
-    private[emixa] var cmdArgMap = Map.empty[String, String]
-    private[emixa] var context = new scala.util.DynamicVariable[Option[NoArgTest]](None)
-    override def withFixture(test: NoArgTest): org.scalatest.Outcome = {
-      require(context.value.isEmpty)
-      context.withValue(Some(test)) {
-        cmdArgMap = test.configMap.map { case (k, v) => k -> v.toString() }
-        super.withFixture(test)
-      }
-    }
 
     /** Empty function template for characterization
      * @param mod the inexact arithmetic unit to characterize
      */
-    private[emixa] def _characterize[T <: Module](mod: T): Unit
+    private[emixa] def _characterize(mod: U): Unit
 
     /** Function that all inheriting classes should call to perform
      * any characterization
      */
-    def characterize[T <: Module]()(implicit ct: ClassTag[T], tt: ru.TypeTag[T]): Unit = {
+    def characterize()(implicit ct: ClassTag[U], tt: ru.TypeTag[U]): Unit = {
       ct.runtimeClass.getSimpleName() should "characterize" in {
-        test(instantiate(ct.runtimeClass)(parseArgMap[T](cmdArgMap):_*).asInstanceOf[T])
-          .withAnnotations(symAnnos) { dut => _characterize(dut) }
+        simulate(instantiate(ct.runtimeClass)(_parseArgs():_*).asInstanceOf[U]) {
+          dut => _characterize(dut)
+        }
       }
     }
 

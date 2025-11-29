@@ -1,6 +1,6 @@
 # `emixa`: Error Modeling of IneXact Arithmetic
 
-This repository contains a library for nearly automatic characterization of approximate arithmetic units. These units are imported from the [approx](https://github.com/aproposorg/approx) and written in [Chisel](https://github.com/chipsalliance/chisel3), with tests described in [ChiselTest](https://github.com/ucb-bar/chiseltest). In its current form, `emixa` only supports characterizing adders and multipliers, producing plots of their error characteristicts and/or (approximated) Python descriptions of their functionality.
+This repository contains a library for nearly automatic characterization of approximate arithmetic units. These units are imported from the [approx](https://github.com/aproposorg/approx) and written in [Chisel](https://github.com/chipsalliance/chisel3), with tests running in ChiselSim. In its current form, `emixa` only supports characterizing adders and multipliers, producing plots of their error characteristicts and/or (approximated) Python descriptions of their functionality.
 
 The tool is invoked with the command line as follows:
 
@@ -8,7 +8,7 @@ The tool is invoked with the command line as follows:
 python3 emixa.py [-f[unction]] [-p[lots]] [-v[erbose]] CHARACTERIZER_NAME [ARG ...]
 ```
 
-The `-f` and `-p` flags enable outputting Python functions and plots, respectively. The `-v` flag puts the tool in verbose mode under which it forwards stdout outputs from the ChiselTest characterizers to the tool's stdout. `CHARACTERIZER_NAME` denotes the name of a characterizer class defined by the user, which is passed arguments `ARG ...`. The tool supports range-style arguments `start:stop[:by]` to execute tests for, say, multiple bit-widths in one call, for example:
+The `-f` and `-p` flags enable outputting Python functions and plots, respectively. The `-v` flag puts the tool in verbose mode under which it forwards stdout outputs from the ChiselSim characterizers to the tool's stdout. `CHARACTERIZER_NAME` denotes the name of a characterizer class defined by the user, which is passed arguments `ARG ...`. The tool supports range-style arguments `start:stop[:by]` to execute tests for, say, multiple bit-widths in one call, for example:
 
 ```shell
 python3 emixa.py -p -v ApproxAdderSpec 32 8:16:2
@@ -29,15 +29,16 @@ This README only contains a brief overview of the library's current functionalit
 ***
 # Requirements
 
-Apart from its core components described written in Python, the library requires a suitable installation of Scala for the `approx`, Chisel, and ChiselTest components to compile and execute. For this purpose, we use the Scala Build Tool (`sbt`) for which we provide a suitable build script. To install the needed Python packages, execute the following command:
+Apart from its core components described written in Python, the library requires a suitable installation of Scala for the `approx` and Chisel components to compile and execute. For this purpose, we use the Scala Build Tool (`sbt`) for which we provide a suitable build script. To install the needed Python packages, execute the following command:
 
 ```shell
+mkdir -p build
+python3 -m venv build/env
+source build/env/bin/activate
 pip3 install -r ./requirements.txt
 ```
 
-`emixa` does not require Verilator to be installed for pure Chisel designs, but if it is available, the tool will automatically use it to speed up simulations. Blackbox designs require an installation of Verilator. Note that only [specific versions of Verilator](https://github.com/ucb-bar/chiseltest#verilator-versions) are officially supported.
-
-This library is tested in Ubuntu 20.04 with Python 3.8 and Verilator 4.028.
+This library is tested in Ubuntu 24.04 with Python 3.12.3 and Verilator 5.020.
 
 ***
 # Using the library
@@ -49,11 +50,11 @@ import emixa.AdderCharacterizer
 import emixa.Signedness.Signed
 import emixa.Characterization.Random2D
 
-class ApproxAdderSpec extends AdderCharacterizer {
+class ApproxAdderSpec extends AdderCharacterizer[ApproxAdder] {
   val sgn = Signed
   val chartype = Random2D
 
-  characterize[ApproxAdder]()
+  characterize()
 }
 ```
 

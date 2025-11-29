@@ -7,14 +7,14 @@ import emixa.AdderCharacterizer
 import emixa.Signedness.Signed
 import emixa.Characterization.Random3D
 
-class GeArSpec extends AdderCharacterizer {
+class GeArSpec extends AdderCharacterizer[WrappedGeAr] {
   val sgn = Signed
   val chartype = Random3D
 
-  characterize[WrappedGeAr]()
+  characterize()
 }
 
-private class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int = 0) extends Adder(width) {
+class WrappedGeAr(width: Int, subAddWidth: Int, specWidth: Int = 0) extends Adder(width) {
   val gear = Module(new GeAr(width, subAddWidth, specWidth))
   gear.io.a    := io.a
   gear.io.b    := io.b
